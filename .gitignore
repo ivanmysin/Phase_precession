@@ -1,5 +1,6 @@
 # user deleted
-
+/output/
+!*/output/.gitkeep
 lib.cpp
 .idea/
 
