@@ -196,143 +196,192 @@ def loss(X, teor_spike_rate, g_syn, sim_time, Erev, parzen_window, issaveV):
     L = np.mean( np.log( (teor_spike_rate+1)/(spike_rate+1) )**2 )
     return L
 ##################################################################
-### Параметры для симуляции
-duration = 3000 # 5000 # 10000      # ms
-dt = 0.1              # ms
-precession_slope = 5  # deg/cm
-animal_velosity = 20  # cm/sec
-theta_freq = 8        # Hz
-R_place_cell = 0.5    # ray length
-place_field_center = 0.5*duration # 50 # cm
-sigma_place_field = 3 # cm
-ca3_center = place_field_center + 200 # 53.5   # 105
-ec3_center = place_field_center - 200 # 47.5   # 95
-datafile = "inputs_data.csv"
-
-output_path = "./output/"
-outfile = output_path + 'out.csv'
-conductance_file = output_path + "conductances.hdf5"
-###################################################################
-### Делаем предвычисления
-sim_time = np.arange(0, duration, dt)
-precession_slope = animal_velosity * np.deg2rad(precession_slope)
-kappa_place_cell = r2kappa(R_place_cell)
-sigma_place_field = 1000 * sigma_place_field / animal_velosity # recalculate to ms
-# place_field_center = place_field_center / animal_velosity # recalculate to sec
-# ca3_center = ca3_center / animal_velosity # recalculate to sec
-# ec3_center = ec3_center / animal_velosity # recalculate to sec
-
-teor_spike_rate = get_teor_spike_rate(sim_time, precession_slope, theta_freq, kappa_place_cell,  sigma=sigma_place_field, center=place_field_center)
-
-
-# plt.plot(sim_time, teor_spike_rate)
-# plt.show()
-
-data = pd.read_csv(datafile, header=0, comment="#", index_col=0)
-# data.loc["tau_rise"]  *= 1000
-# data.loc["tau_decay"]  *= 1000
-# data.loc["E"]  *= 1000
-data.loc["phi"]  = np.deg2rad(data.loc["phi"])
-data.loc["kappa"] = [ r2kappa(r) for r in data.loc["R"] ]
-parzen_window = parzen(1001)
-####################################################################
-g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
-Erev = np.zeros( len(data.columns), dtype=np.float64)
-# inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq)
-print("integrate synaptic coductances")
-with h5py.File(conductance_file, "w") as hdf_file:
-    hdf_file.attrs["dt"] = dt
-    hdf_file.attrs["duration"] = duration
-    for inp_idx, input_name in enumerate(data.columns):
-        args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
-        sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
-        g = sol.sol(sim_time)[0]
-        g *= 1.0 / np.max(g)
-        g_syn[:, inp_idx] = g
-        Erev[inp_idx] = data.loc["E"][input_name]
-
-        hdf_file.create_dataset(input_name, data=g)
+def main(num, param):
+    print('start optimization')
+    ###################################################################
+    ### Параметры для симуляции
+    duration = 3000 # ms
+    dt = 0.1        # ms
+    
+    theta_freq = param['theta_freq'] # 8 Hz
+    precession_slope = param['precession_slope']  # deg/cm
+    animal_velosity = param['animal_velosity']  # cm/sec
+    R_place_cell = param['R_place_cell']  # ray length
+    place_field_center = 0.5*duration # center of similation
+    sigma_place_field = param['sigma_place_field'] # cm 
+    ca3_center = place_field_center + 200 #
+    ec3_center = place_field_center - 200 #
+    
+    output_path = "./output/"
+    datafile = "inputs_data.csv"
+    outfile = output_path + 'out.csv'
+    conductance_file = output_path + "conductances.hdf5"
+    ###################################################################
+    
+    ### Делаем предвычисления
+    sim_time = np.arange(0, duration, dt)
+    precession_slope = animal_velosity * np.deg2rad(precession_slope)
+    kappa_place_cell = r2kappa(R_place_cell)
+    sigma_place_field = 1000 * sigma_place_field / animal_velosity # recalculate to ms
+    
+    teor_spike_rate = get_teor_spike_rate(sim_time, precession_slope, theta_freq, kappa_place_cell,  sigma=sigma_place_field, center=place_field_center)
 
 
+    data = pd.read_csv(datafile, header=0, comment="#", index_col=0)
+    data.loc["phi"]  = np.deg2rad(data.loc["phi"])
+    data.loc["kappa"] = [ r2kappa(r) for r in data.loc["R"] ]
+    parzen_window = parzen(1001)
+    ####################################################################
+    g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
+    Erev = np.zeros( len(data.columns), dtype=np.float64)
+    # inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq)
+    print("integrate synaptic coductances")
+    with h5py.File(conductance_file, "w") as hdf_file:
+        hdf_file.attrs["dt"] = dt
+        hdf_file.attrs["duration"] = duration
+        for inp_idx, input_name in enumerate(data.columns):
+            args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
+            sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
+            g = sol.sol(sim_time)[0]
+            g *= 1.0 / np.max(g)
+            g_syn[:, inp_idx] = g
+            Erev[inp_idx] = data.loc["E"][input_name]
+    
+            hdf_file.create_dataset(input_name, data=g)
 
-n_pops = len(data.columns)
-X = np.zeros(n_pops*3, dtype=np.float64)
+    # with h5py.File(conductance_file, "r") as hdf_file:
+    #     for inp_idx, input_name in enumerate(data.columns):
+    #         g_syn[:, inp_idx] = hdf_file[input_name][:]
+    #         Erev[inp_idx] = data.loc["E"][input_name]
 
-W = 0.1*np.ones(n_pops, dtype=np.float64)
-W[0] = 0.5
-W[1] = 0.5
+    n_pops = len(data.columns)
+    X = np.zeros(n_pops*3, dtype=np.float64)
+    
+    W = 0.1*np.ones(n_pops, dtype=np.float64)
+    W[0] = 0.5
+    W[1] = 0.5
+    
+    centers = np.zeros_like(W) + place_field_center
+    centers[0] = ca3_center
+    centers[1] = ec3_center
+    
+    sigmas = np.zeros_like(centers) + sigma_place_field
+    X[0::3] = W
+    X[1::3] = centers
+    X[2::3] = sigmas
 
-centers = np.zeros_like(W) + place_field_center
-centers[0] = ca3_center
-centers[1] = ec3_center
+    print("start simulation")
+    
+    bounds = []
+    for bnd_idx in range(X.size):
+        if bnd_idx%3 == 0:
+            bounds.append([0, 1])
+        elif bnd_idx%3 == 1:
+            bounds.append([0, duration])
+        elif bnd_idx%3 == 2:
+            bounds.append([100, 15000])
+    
+    # Изменяем границы для параметров для СА3
+    bounds[0][0] = 0.01 # вес не менее 0,2
+    bounds[1][0] = place_field_center # центр входа от СА3 не ранее центра в СА1
+    
+    # Изменяем границы для параметров для EC3
+    bounds[3][0] = 0.01 # вес не менее 0,2
+    bounds[4][1] = place_field_center # центр входа от EC3 ранее центра в СА1
+    
+    loss_args = (teor_spike_rate, g_syn, sim_time, Erev, parzen_window, False)
 
-sigmas = np.zeros_like(centers) + sigma_place_field
-X[0::3] = W
-X[1::3] = centers
-X[2::3] = sigmas
+    timer = time.time()
+    #mutation = (0.5, 1.9)
+    sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-2, recombination=0.7, \
+                                 mutation=0.7, args=loss_args, bounds=bounds,  maxiter=40, \
+                                 workers=-1, updating='deferred', disp=True, \
+                                 strategy='best2bin')
+    
+    X = sol.x
+    
+    print("Time of optimization ", time.time() - timer, " sec")
+    print("success ", sol.success)
+    print("message ", sol.message)
+    print("number of interation ", sol.nit)
+    
+    outdata = pd.DataFrame(columns = data.columns)
+    outdata.loc["W"] = X[0::3]
+    outdata.loc["Center"] = X[1::3]
+    outdata.loc["Sigma"] = X[2::3]
+    outdata.to_csv(outfile)
+    
+    g_syn_wcs = np.copy(g_syn)
+    W = X[0::3]
+    C = X[1::3]
+    S = X[2::3]
+    
+    # print(W)
+    # print(C)
+    # print(S)
+    
+    # взвешивание и центрирование гауссианой
+    for idx in range(n_pops):
+        g_syn_wcs[:, idx] *= W[idx] * np.exp(-0.5 * ((C[idx] - sim_time) / S[idx])**2)
+    
+    spike_rate, Vhist = run_model(g_syn_wcs, sim_time, Erev, parzen_window, True)
+    
+    fig, axes = plt.subplots(nrows=2, sharex=True)
+    axes[0].plot(sim_time, Vhist)
+    axes[1].plot(sim_time, teor_spike_rate,  linewidth=1, label='target spike rate')
+    axes[1].plot(sim_time, spike_rate, linewidth=1, label='simulated spike rate')
 
-print("start simulation")
+    axes[1].legend(loc='upper left')
+    fig.savefig(output_path + f"spike_rate_{num}.png")
+    
+    fig.close()
+    with h5py.File(output_path + f'{num}.hdf5', "w") as hdf_file:
+        hdf_file.create_dataset('V', data=Vhist)
+        hdf_file.create_dataset('spike_rate', data=spike_rate)
+        hdf_file.create_dataset('teor_spike_rate', data=teor_spike_rate)
+        hdf_file.create_dataset('Weights', data=W)
+        hdf_file.create_dataset('Centers', data=(C - place_field_center) )
+        hdf_file.create_dataset('Sigmas', data=S)
+        for name, value in param.items():
+            hdf_file.attrs[name] = value
+            
+            
+            
 
-bounds = []
-for bnd_idx in range(X.size):
-    if bnd_idx%3 == 0:
-        bounds.append([0, 1])
-    elif bnd_idx%3 == 1:
-        bounds.append([0, duration])
-    elif bnd_idx%3 == 2:
-        bounds.append([100, 15000])
+precession_slope = [2.5, 3.5, 5, 6, 7]
+animal_velosity = [10, 15, 20, 25, 30]
+R_place_cell = [0.4, 0.5, 0.55]
+sigma_place_field = [2, 3, 4, 5]
+theta_freqs = [4, 6, 8, 10, 12]
+default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 3, 'theta_freq': 8}
 
-# Изменяем границы для параметров для СА3
-bounds[0][0] = 0.01 # вес не менее 0,2
-bounds[1][0] = place_field_center # центр входа от СА3 не ранее центра в СА1
+lenth = [len(precession_slope), len(animal_velosity), \
+        len(R_place_cell), len(sigma_place_field), \
+        len(theta_freqs)]
+input_params = []
 
-# Изменяем границы для параметров для EC3
-bounds[3][0] = 0.01 # вес не менее 0,2
-bounds[4][1] = place_field_center # центр входа от EC3 ранее центра в СА1
 
-loss_args = (teor_spike_rate, g_syn, sim_time, Erev, parzen_window, False)
 
-timer = time.time()
-#mutation = (0.5, 1.9)
-sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=0.7, \
-                             mutation=0.7, args=loss_args, bounds=bounds,  maxiter=40, \
-                             workers=4, updating='deferred', disp=True, \
-                             strategy='best2bin')
+for i in range(20):
+    
+    param = copy(default_param)
+    flag = False
+    while not flag:
+        n = np.ndarray.tolist(randint(lenth))
+        if n not in input_params:
+            flag = True
+    n.insert(0, i)
+    # print(n)
+    input_params.append(n)
+    # print(input_params)
+    param['precession_slope'] = precession_slope[n[1]]
+    param['animal_velosity'] = animal_velosity[n[2]]
+    param['R_place_cell'] = R_place_cell[n[3]]
+    param['sigma_place_field'] = sigma_place_field[n[4]]
+    param['theta_freqs'] = theta_freqs[n[5]]
+    name = f'experiment_{i}'
+    main(name, param)
+    
+    
 
-X = sol.x
-
-print("Time of optimization ", time.time() - timer, " sec")
-print("success ", sol.success)
-print("message ", sol.message)
-print("number of interation ", sol.nit)
-
-outdata = pd.DataFrame(columns = data.columns)
-outdata.loc["W"] = X[0::3]
-outdata.loc["Center"] = X[1::3]
-outdata.loc["Sigma"] = X[2::3]
-outdata.to_csv(outfile)
-
-g_syn_wcs = np.copy(g_syn)
-W = X[0::3]
-C = X[1::3]
-S = X[2::3]
-
-# print(W)
-# print(C)
-# print(S)
-
-# взвешивание и центрирование гауссианой
-for idx in range(n_pops):
-    g_syn_wcs[:, idx] *= W[idx] * np.exp(-0.5 * ((C[idx] - sim_time) / S[idx])**2)
-
-spike_rate, Vhist = run_model(g_syn_wcs, sim_time, Erev, parzen_window, True)
-
-fig, axes = plt.subplots(nrows=2, sharex=True)
-axes[0].plot(sim_time, Vhist)
-axes[1].plot(sim_time, teor_spike_rate,  linewidth=1, label='target spike rate')
-axes[1].plot(sim_time, spike_rate, linewidth=1, label='simulated spike rate')
-
-axes[1].legend(loc='upper left')
-fig.savefig(output_path + "spike_rate.png")
-plt.show()
 
