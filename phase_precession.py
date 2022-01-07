@@ -146,6 +146,7 @@ def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
     spike_rate[peaks] += 1
     spike_rate = np.convolve(spike_rate, parzen_window, mode='same')
 
+    Vsoma = Vsoma - 60
 
     return spike_rate, Vsoma
 
