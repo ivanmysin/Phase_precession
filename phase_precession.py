@@ -9,6 +9,8 @@ from numba import jit
 import h5py
 import lib
 from scipy.signal import find_peaks
+from numpy.random import randint
+from copy import copy
 
 @jit(nopython=True)
 def inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq):
@@ -362,7 +364,7 @@ input_params = []
 
 
 
-for i in range(20):
+for i in range(100):
     
     param = copy(default_param)
     flag = False
