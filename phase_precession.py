@@ -238,6 +238,7 @@ def main(num, param):
     Erev = np.zeros( len(data.columns), dtype=np.float64)
     # inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq)
     print("integrate synaptic coductances")
+    """
     with h5py.File(conductance_file, "w") as hdf_file:
         hdf_file.attrs["dt"] = dt
         hdf_file.attrs["duration"] = duration
@@ -250,11 +251,11 @@ def main(num, param):
             Erev[inp_idx] = data.loc["E"][input_name]
     
             hdf_file.create_dataset(input_name, data=g)
-
-    # with h5py.File(conductance_file, "r") as hdf_file:
-    #     for inp_idx, input_name in enumerate(data.columns):
-    #         g_syn[:, inp_idx] = hdf_file[input_name][:]
-    #         Erev[inp_idx] = data.loc["E"][input_name]
+    """
+    with h5py.File(conductance_file, "r") as hdf_file:
+         for inp_idx, input_name in enumerate(data.columns):
+            g_syn[:, inp_idx] = hdf_file[input_name][:]
+            Erev[inp_idx] = data.loc["E"][input_name]
 
     n_pops = len(data.columns)
     X = np.zeros(n_pops*3, dtype=np.float64)
@@ -291,14 +292,20 @@ def main(num, param):
     bounds[3][0] = 0.01 # вес не менее 0,2
     bounds[4][1] = place_field_center # центр входа от EC3 ранее центра в СА1
     
+   
+    
     loss_args = (teor_spike_rate, g_syn, sim_time, Erev, parzen_window, False)
 
     timer = time.time()
     #mutation = (0.5, 1.9)
-    sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-2, recombination=0.7, \
+    try:
+        sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-2, recombination=0.7, \
                                  mutation=0.7, args=loss_args, bounds=bounds,  maxiter=40, \
                                  workers=-1, updating='deferred', disp=True, \
                                  strategy='best2bin')
+    except:
+        print("Error in optimization")
+        return
     
     X = sol.x
     
@@ -336,7 +343,7 @@ def main(num, param):
     axes[1].legend(loc='upper left')
     fig.savefig(output_path + f"spike_rate_{num}.png")
     
-    fig.close()
+    
     with h5py.File(output_path + f'{num}.hdf5', "w") as hdf_file:
         hdf_file.create_dataset('V', data=Vhist)
         hdf_file.create_dataset('spike_rate', data=spike_rate)
@@ -346,6 +353,9 @@ def main(num, param):
         hdf_file.create_dataset('Sigmas', data=S)
         for name, value in param.items():
             hdf_file.attrs[name] = value
+    
+    plt.close('all')
+    return 
             
             
             
@@ -364,7 +374,7 @@ input_params = []
 
 
 
-for i in range(100):
+for i in range(5, 100):
     
     param = copy(default_param)
     flag = False
