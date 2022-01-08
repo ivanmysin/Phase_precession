@@ -299,7 +299,7 @@ def main(num, param):
     timer = time.time()
     #mutation = (0.5, 1.9)
     try:
-        sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-2, recombination=0.7, \
+        sol = differential_evolution(loss, x0=X, popsize=24, atol=5e-3, recombination=0.7, \
                                  mutation=0.7, args=loss_args, bounds=bounds,  maxiter=40, \
                                  workers=-1, updating='deferred', disp=True, \
                                  strategy='best2bin')
@@ -374,7 +374,7 @@ input_params = []
 
 
 
-for i in range(5, 100):
+for i in range(8, 100):
     
     param = copy(default_param)
     flag = False
