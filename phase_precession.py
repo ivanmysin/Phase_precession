@@ -11,6 +11,7 @@ import lib
 from scipy.signal import find_peaks
 from numpy.random import randint
 from copy import copy
+import os
 
 @jit(nopython=True)
 def inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq):
@@ -216,7 +217,6 @@ def main(num, param):
     
     output_path = "./output/"
     datafile = "inputs_data.csv"
-    outfile = output_path + 'out.csv'
     conductance_file = output_path + "conductances.hdf5"
     ###################################################################
     
@@ -299,7 +299,7 @@ def main(num, param):
     timer = time.time()
     #mutation = (0.5, 1.9)
     try:
-        sol = differential_evolution(loss, x0=X, popsize=24, atol=5e-3, recombination=0.7, \
+        sol = differential_evolution(loss, x0=X, popsize=48, atol=1e-3, recombination=0.7, \
                                  mutation=0.7, args=loss_args, bounds=bounds,  maxiter=40, \
                                  workers=-1, updating='deferred', disp=True, \
                                  strategy='best2bin')
@@ -314,20 +314,12 @@ def main(num, param):
     print("message ", sol.message)
     print("number of interation ", sol.nit)
     
-    outdata = pd.DataFrame(columns = data.columns)
-    outdata.loc["W"] = X[0::3]
-    outdata.loc["Center"] = X[1::3]
-    outdata.loc["Sigma"] = X[2::3]
-    outdata.to_csv(outfile)
-    
     g_syn_wcs = np.copy(g_syn)
     W = X[0::3]
     C = X[1::3]
     S = X[2::3]
     
-    # print(W)
-    # print(C)
-    # print(S)
+
     
     # взвешивание и центрирование гауссианой
     for idx in range(n_pops):
@@ -357,42 +349,121 @@ def main(num, param):
     plt.close('all')
     return 
             
-            
-            
+def run_model_with_parameters(params, default_param, W, C, S, dt, duration, output_path, filename):
+    sim_time = np.arange(0, duration, dt)
+
+    C = C * default_param['animal_velosity']/params['animal_velosity'] + 0.5*duration
+    S = S * default_param['animal_velosity']/params['animal_velosity']
+
+    datafile = "inputs_data.csv"
+    data = pd.read_csv(datafile, header=0, comment="#", index_col=0)
+    data.loc["phi"]  = np.deg2rad(data.loc["phi"])
+    data.loc["kappa"] = [ r2kappa(r) for r in data.loc["R"] ]
+    parzen_window = parzen(15)
+    g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
+    Erev = np.zeros( len(data.columns), dtype=np.float64)
+
+    theta_freq = param['theta_freq']
+
+    # взвешивание и центрирование гауссианой
+    for inp_idx, input_name in enumerate(data.columns):
+        args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
+        sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
+        g = sol.sol(sim_time)[0]
+        g *= 1.0 / np.max(g)
+        g_syn[:, inp_idx] = g
+        Erev[inp_idx] = data.loc["E"][input_name]
+
+    g_syn_wcs = g_syn
+    for idx in range(W.size):
+        g_syn_wcs[:, idx] *= W[idx] * np.exp(-0.5 * ((C[idx] - sim_time) / S[idx])**2)
+
+    spike_rate, Vhist = run_model(g_syn_wcs, sim_time, Erev, parzen_window, True)
+
+    fig, axes = plt.subplots(nrows=2, sharex=True)
+    axes[0].plot(sim_time, Vhist)
+    axes[1].plot(sim_time, spike_rate, linewidth=1, label='simulated spike rate')
+
+    axes[1].legend(loc='upper left')
+    fig.savefig(output_path + f"spike_rate_{filename}.png")
+
+    with h5py.File(output_path + f'{filename}.hdf5', "w") as hdf_file:
+        hdf_file.create_dataset('V', data=Vhist)
+        hdf_file.create_dataset('spike_rate', data=spike_rate)
+        hdf_file.create_dataset('Weights', data=W)
+        hdf_file.create_dataset('Centers', data=(C - 0.5*duration) )
+        hdf_file.create_dataset('Sigmas', data=S)
+        for name, value in param.items():
+            hdf_file.attrs[name] = value
+
 
 precession_slope = [2.5, 3.5, 5, 6, 7]
 animal_velosity = [10, 15, 20, 25, 30]
 R_place_cell = [0.4, 0.5, 0.55]
 sigma_place_field = [2, 3, 4, 5]
-theta_freqs = [4, 6, 8, 10, 12]
+theta_freq = [4, 6, 8, 10, 12]
 default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 3, 'theta_freq': 8}
 
 lenth = [len(precession_slope), len(animal_velosity), \
         len(R_place_cell), len(sigma_place_field), \
-        len(theta_freqs)]
+        len(theta_freq)]
 input_params = []
 
+# optimize to the default params
+# main("default_experiment", default_param)
+
+# Параметры модели: частота тета-ритма, скорость животного, размера поля места (сигма), веса входов, их центры и сигмы.
+# run optimizeed model with different params
+dt = 0.1
+duration = 3000
+output_path = './output/research_default_optimization/'
+conductance_file = './output/conductances.hdf5'
+with h5py.File('./output/default_experiment.hdf5', "r") as hdf_file:
+    W = hdf_file['Weights'][:]
+    C = hdf_file['Centers'][:]
+    S = hdf_file['Sigmas'][:]
+
+for param_name in ['theta_freq', 'animal_velosity']:
+    for param_var in globals()[param_name]:
+        param = copy(default_param)
+        param[param_name] = param_var
+        filename = param_name + str(param_var)
+        # run_model_with_parameters(param, default_param, W, C, S, dt, duration, output_path, filename)
+
+for param_name in ['W', 'C', 'S']:
+    for p_idx, param_var in enumerate(globals()[param_name]):
+        param_range = np.linspace(0.8*param_var, 1.2*param_var, 10)
+
+        for idx, val in enumerate(param_range):
+            param_var[p_idx] = val
+            # filename = param_name + str(param_var) !!!!
+            # print(param_name, param_var)
+            # #run_model_with_parameters(default_param, default_param, W, C, S, dt, duration, output_path, filename)
 
 
-for i in range(8, 100):
-    
-    param = copy(default_param)
-    flag = False
-    while not flag:
-        n = np.ndarray.tolist(randint(lenth))
-        if n not in input_params:
-            flag = True
-    n.insert(0, i)
-    # print(n)
-    input_params.append(n)
-    # print(input_params)
-    param['precession_slope'] = precession_slope[n[1]]
-    param['animal_velosity'] = animal_velosity[n[2]]
-    param['R_place_cell'] = R_place_cell[n[3]]
-    param['sigma_place_field'] = sigma_place_field[n[4]]
-    param['theta_freqs'] = theta_freqs[n[5]]
-    name = f'experiment_{i}'
-    main(name, param)
+
+
+
+
+# for i in range(1, 100):
+#
+#     param = copy(default_param)
+#     flag = False
+#     while not flag:
+#         n = np.ndarray.tolist(randint(lenth))
+#         if n not in input_params:
+#             flag = True
+#     n.insert(0, i)
+#     # print(n)
+#     input_params.append(n)
+#     # print(input_params)
+#     param['precession_slope'] = precession_slope[n[1]]
+#     param['animal_velosity'] = animal_velosity[n[2]]
+#     param['R_place_cell'] = R_place_cell[n[3]]
+#     param['sigma_place_field'] = sigma_place_field[n[4]]
+#     param['theta_freq'] = theta_freq[n[5]] # !!!! Исследование тета-частоты не проводилось !!!
+#     name = f'experiment_{i}'
+#     main(name, param)
     
     
 
