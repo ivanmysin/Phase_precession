@@ -380,12 +380,12 @@ def run_model_with_parameters(params, default_param, W, C, S, dt, duration, outp
 
     spike_rate, Vhist = run_model(g_syn_wcs, sim_time, Erev, parzen_window, True)
 
-    fig, axes = plt.subplots(nrows=2, sharex=True)
-    axes[0].plot(sim_time, Vhist)
-    axes[1].plot(sim_time, spike_rate, linewidth=1, label='simulated spike rate')
-
-    axes[1].legend(loc='upper left')
-    fig.savefig(output_path + f"spike_rate_{filename}.png")
+    # fig, axes = plt.subplots(nrows=2, sharex=True)
+    # axes[0].plot(sim_time, Vhist)
+    # axes[1].plot(sim_time, spike_rate, linewidth=1, label='simulated spike rate')
+    #
+    # axes[1].legend(loc='upper left')
+    # fig.savefig(output_path + f"spike_rate_{filename}.png")
 
     with h5py.File(output_path + f'{filename}.hdf5', "w") as hdf_file:
         hdf_file.create_dataset('V', data=Vhist)
@@ -428,17 +428,25 @@ for param_name in ['theta_freq', 'animal_velosity']:
         param = copy(default_param)
         param[param_name] = param_var
         filename = param_name + str(param_var)
-        # run_model_with_parameters(param, default_param, W, C, S, dt, duration, output_path, filename)
+        run_model_with_parameters(param, default_param, W, C, S, dt, duration, output_path, filename)
 
 for param_name in ['W', 'C', 'S']:
     for p_idx, param_var in enumerate(globals()[param_name]):
         param_range = np.linspace(0.8*param_var, 1.2*param_var, 10)
 
+        Ws = np.copy(W)
+        Cs = np.copy(C)
+        Ss = np.copy(S)
         for idx, val in enumerate(param_range):
-            param_var[p_idx] = val
-            # filename = param_name + str(param_var) !!!!
+            if param_name == 'W':
+                Ws[p_idx] = val
+            elif param_name == 'C':
+                Cs[p_idx] = val
+            elif param_name == 'S':
+                Ss[p_idx] = val
+            filename = param_name + '_' + str(p_idx) + '_' + str(idx)
             # print(param_name, param_var)
-            # #run_model_with_parameters(default_param, default_param, W, C, S, dt, duration, output_path, filename)
+            run_model_with_parameters(default_param, default_param, Ws, Cs, Ss, dt, duration, output_path, filename)
 
 
 
