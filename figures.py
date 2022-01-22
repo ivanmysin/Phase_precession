@@ -100,7 +100,8 @@ def fig2C(ax, name_file, duration, dt):
     f *= 1
     T = 1/f
 
-    t = sim_time[V == Vreset]
+    t, _ = signal.find_peaks(V, height=-10)  # sim_time[V == Vreset]
+    t = t * dt
     # print(t)
     ph = f*(t - t//T*T)*360
     # print()
@@ -117,17 +118,17 @@ def fig2C(ax, name_file, duration, dt):
     return ax
 
 def fig2D(ax, flag, name_file, duration, dt):
-    data = pd.read_csv('data_3.csv', header=0, comment="#", index_col=0)
+    data = pd.read_csv('inputs_data.csv', header=0, comment="#", index_col=0)
 
     sim_time = np.arange(0, duration, dt)
 
     with h5py.File(f'{name_file}.hdf5', 'r') as hdf_file:
-        W = hdf_file['W'][:]
-        S = hdf_file['S'][:]
-        C = hdf_file['C'][:]
+        W = hdf_file['Weights'][:]
+        S = hdf_file['Sigmas'][:]
+        C = hdf_file['Centers'][:]
 
     g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
-    with h5py.File('conductances.hdf5', "r") as hdf_file:
+    with h5py.File('./output/conductances.hdf5', "r") as hdf_file:
         for inp_idx, input_name in enumerate(data.columns):
             g_syn[:, inp_idx] = hdf_file[input_name][:]
 
@@ -160,5 +161,5 @@ def fig2D(ax, flag, name_file, duration, dt):
 
 
 if __name__ == '__main__':
-    name_file = 'output/experiment_0'
+    name_file = 'output/default_experiment_'
     fig2(name_file)
