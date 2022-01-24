@@ -19,6 +19,8 @@ def fig2(name_file):
     duration = 3000
     dt = 0.1
 
+    # print(1)
+
     # fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(5, 2.7))
 
     fig = plt.figure()
