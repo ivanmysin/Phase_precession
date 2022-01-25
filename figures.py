@@ -59,6 +59,8 @@ def fig2B(ax, name_file, duration, dt):
 
     with h5py.File(f'{name_file}.hdf5', 'r') as hdf_file:
         spike_rate = hdf_file['spike_rate'][:]
+        V = hdf_file['V'][:]
+        teor_spike_rate = hdf_file['teor_spike_rate'][:]
         precession_slope = hdf_file.attrs['precession_slope']
         theta_freq = hdf_file.attrs['theta_freq']
         R_place_cell = hdf_file.attrs['R_place_cell']
@@ -72,10 +74,10 @@ def fig2B(ax, name_file, duration, dt):
     sigma_place_field = sigma_place_field / animal_velosity # recalculate to sec
     place_field_center = place_field_center / animal_velosity
 
-    teor_spike_rate = get_teor_spike_rate(sim_time, precession_slope, theta_freq, kappa_place_cell,  sigma=sigma_place_field, center=place_field_center)
+    # teor_spike_rate = get_teor_spike_rate(sim_time, precession_slope, theta_freq, kappa_place_cell,  sigma=sigma_place_field, center=place_field_center)
     y = (np.cos(2*np.pi*theta_freq*0.001*sim_time)+1)/2
-    index_teor = signal.argrelmax(teor_spike_rate)
-    index_exp = signal.argrelmax(spike_rate)
+    index_teor, _ = signal.find_peaks(teor_spike_rate, height=0.1)
+    index_exp, _ = signal.find_peaks(V, height=-10)  # signal.argrelmax(spike_rate)
 
     ax.plot(sim_time, teor_spike_rate,  linewidth=1, label='target spike rate')
     ax.plot(sim_time, spike_rate, linewidth=1, label='simulated spike rate')
@@ -163,5 +165,5 @@ def fig2D(ax, flag, name_file, duration, dt):
 
 
 if __name__ == '__main__':
-    name_file = 'output/default_experiment_'
+    name_file = 'output/default_experiment'
     fig2(name_file)

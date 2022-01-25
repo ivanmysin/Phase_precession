@@ -26,37 +26,38 @@ def inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq):
     return out
 
 
+"""
+@jit(nopython=True)
+def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
+    El = -60
+    VT = -50
+    Vreset = -80
+    gl = 0.1
+    V = El
+    C = 1
+    dt = sim_time[1] - sim_time[0]
+    spike_rate = np.zeros_like(sim_time)
 
-# @jit(nopython=True)
-# def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
-#     El = -60
-#     VT = -50
-#     Vreset = -80
-#     gl = 0.1
-#     V = El
-#     C = 1
-#     dt = sim_time[1] - sim_time[0]
-#     spike_rate = np.zeros_like(sim_time)
-#
-#     if issaveV:
-#         Vhist = np.zeros_like(sim_time)
-#
-#     for t_idx, t in enumerate(sim_time):
-#         Isyn = np.sum(g_syn[t_idx, :] * (Erev - V))
-#         V = V + dt * (gl*(El - V) + Isyn) / C
-#         if V > VT:
-#             V = Vreset
-#             spike_rate[t_idx] = 1
-#         if issaveV:
-#             Vhist[t_idx] = V
-#
-#     spike_rate = np.convolve(spike_rate, parzen_window)
-#     spike_rate = spike_rate[parzen_window.size//2:sim_time.size+parzen_window.size//2]
-#     if issaveV:
-#         return spike_rate, Vhist
-#     else:
-#         return spike_rate, np.empty(0)
+    if issaveV:
+        Vhist = np.zeros_like(sim_time)
 
+    for t_idx, t in enumerate(sim_time):
+        Isyn = np.sum(g_syn[t_idx, :] * (Erev - V))
+        V = V + dt * (gl*(El - V) + Isyn) / C
+        if V > VT:
+            V = Vreset
+            spike_rate[t_idx] = 1
+        if issaveV:
+            Vhist[t_idx] = V
+
+    spike_rate = np.convolve(spike_rate, parzen_window)
+    spike_rate = spike_rate[parzen_window.size//2:sim_time.size+parzen_window.size//2]
+    if issaveV:
+        return spike_rate, Vhist
+    else:
+        return spike_rate, np.empty(0)
+
+"""
 
 def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
     Erev = Erev + 60.0
@@ -146,6 +147,8 @@ def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
     # Vdend = pyramidal.getCompartmentByName('dendrite').getVhist()
     spike_rate = np.zeros_like(Vsoma)
 
+    # print(sim_time.size, Vsoma.size, duration)
+
     peaks = find_peaks(Vsoma, height=30)[0]
     spike_rate[peaks] += 1
     spike_rate = np.convolve(spike_rate, parzen_window, mode='same')
@@ -162,7 +165,9 @@ def get_teor_spike_rate(t, slope, theta_freq, kappa, sigma=0.15, center=5):
     # t = 0.001 * t # ms to sec
     teor_spike_rate = np.exp(-0.5 * ((t - center)/sigma)**2 )
     precession = 0.001 * t * slope
-    teor_spike_rate *= np.exp(kappa * np.cos(2*np.pi*theta_freq*t*0.001 + precession) ) # 0.5 *
+
+    phi0 = -2 * np.pi * theta_freq * 0.001 * center - np.pi - precession[np.argmax(teor_spike_rate)]
+    teor_spike_rate *= np.exp(kappa * np.cos(2*np.pi*theta_freq*t*0.001 + precession + phi0) ) # 0.5 *
     return teor_spike_rate
 
 @jit(nopython=True)
@@ -204,7 +209,7 @@ def main(num, param):
     print('start optimization')
     ###################################################################
     ### Параметры для симуляции
-    duration = 3000 # ms
+    duration = 5000 # ms
     dt = 0.1        # ms
     
     theta_freq = param['theta_freq'] # 8 Hz
@@ -223,6 +228,7 @@ def main(num, param):
     
     ### Делаем предвычисления
     sim_time = np.arange(0, duration, dt)
+    sim_time = 0.1 * np.ceil(10 * sim_time)
     precession_slope = animal_velosity * np.deg2rad(precession_slope)
     kappa_place_cell = r2kappa(R_place_cell)
     sigma_place_field = 1000 * sigma_place_field / animal_velosity # recalculate to ms
@@ -233,7 +239,7 @@ def main(num, param):
     data = pd.read_csv(datafile, header=0, comment="#", index_col=0)
     data.loc["phi"]  = np.deg2rad(data.loc["phi"])
     data.loc["kappa"] = [ r2kappa(r) for r in data.loc["R"] ]
-    parzen_window = parzen(151) # parzen(1001)
+    parzen_window = parzen(1001) # parzen(1001)
     ####################################################################
     g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
     Erev = np.zeros( len(data.columns), dtype=np.float64)
@@ -247,7 +253,7 @@ def main(num, param):
             args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
             sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
             g = sol.sol(sim_time)[0]
-            g *= 1.0 / np.max(g)
+            g *= 1.0 / np.max(g) # !!!!!!!!
             g_syn[:, inp_idx] = g
             Erev[inp_idx] = data.loc["E"][input_name]
     
@@ -287,11 +293,11 @@ def main(num, param):
     
     # Изменяем границы для параметров для СА3
     bounds[0][0] = 0.01 # вес не менее 0,2
-    # bounds[1][0] = place_field_center # центр входа от СА3 не ранее центра в СА1
+    bounds[1][0] = place_field_center # центр входа от СА3 не ранее центра в СА1
     
     # Изменяем границы для параметров для EC3
     bounds[3][0] = 0.01 # вес не менее 0,2
-    # bounds[4][1] = place_field_center # центр входа от EC3 ранее центра в СА1
+    bounds[4][1] = place_field_center # центр входа от EC3 ранее центра в СА1
     
    
     
@@ -299,14 +305,23 @@ def main(num, param):
 
     timer = time.time()
     #mutation = (0.5, 1.9)
-    try:
-        sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=0.7, \
+    #try:
+    sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=0.7, \
                                  mutation=0.7, args=loss_args, bounds=bounds,  maxiter=40, \
                                  workers=-1, updating='deferred', disp=True, \
                                  strategy='best2bin')
-    except:
-        print("Error in optimization")
-        return
+    # except:
+    #     print("Error in optimization")
+    #     for bnd_idx, bnd in enumerate(bounds):
+    #         if X[bnd_idx] < bnd[0] or X[bnd_idx] > bnd[1]:
+    #             if bnd_idx % 3 == 0:
+    #                 print('Outside weight ', bnd_idx//3)
+    #             elif bnd_idx % 3 == 1:
+    #                 print('Outside center ', bnd_idx//3)
+    #             elif bnd_idx % 3 == 2:
+    #                 print('Outside sigma ', bnd_idx//3)
+    #
+    #     return
     
     X = sol.x
     
@@ -334,7 +349,7 @@ def main(num, param):
     theta_phases = theta_phases % (2*np.pi)
     theta_phases[theta_phases > np.pi] -= 2*np.pi
     
-    fig, axes = plt.subplots(nrows=3, sharex=True)
+    fig, axes = plt.subplots(nrows=3)
     axes[0].plot(sim_time, Vhist)
     axes[1].plot(sim_time, teor_spike_rate,  linewidth=1, label='target spike rate')
     axes[1].plot(sim_time, spike_rate, linewidth=1, label='simulated spike rate')
@@ -410,7 +425,11 @@ if __name__ == '__main__':
     R_place_cell = [0.4, 0.5, 0.55]
     sigma_place_field = [2, 3, 4, 5]
     theta_freq = [4, 6, 8, 10, 12]
-    default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 3, 'theta_freq': 8}
+
+
+    # default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 3, 'theta_freq': 8}
+    default_param = {'precession_slope': 5, 'animal_velosity': 10, 'R_place_cell': 0.5, 'sigma_place_field': 4,
+                     'theta_freq': 8}
 
     lenth = [len(precession_slope), len(animal_velosity), \
             len(R_place_cell), len(sigma_place_field), \
