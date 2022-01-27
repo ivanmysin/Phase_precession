@@ -24,7 +24,6 @@ def fig2(name_file, param_local):
 
     duration = 3000
     dt = 0.1
-    Vreset = -80
 
     fig = plt.figure(figsize=(19,9))
     # ax1 = fig.add_subplot(1,1,1)
@@ -35,10 +34,10 @@ def fig2(name_file, param_local):
     ax5 = fig.add_subplot(5,2,6)
     fig2A(ax1, name_file, duration, dt)
     fig2B(ax3, name_file, duration, dt)
-    fig2C(ax2, name_file, duration, dt, Vreset)
-    param = {'mode': 'neg', 'num': 0}
+    fig2C(ax2, name_file, duration, dt)
+    param = {'mode': 'inhibitory', 'num': 0}
     fig2D(ax5, name_file, duration, dt, param)
-    param['mode'] = 'pos'
+    param['mode'] = 'excitatory'
     param['num'] = 1
     fig2D(ax4, name_file, duration, dt, param)
     for i in range(2):
@@ -55,30 +54,31 @@ def fig2(name_file, param_local):
     # fig.savefig(f"{name_file}.png")
 
 def fig2A(ax, name_file, duration, dt):
-    sim_time = np.arange(0, duration, dt)
+    fs = 1000 / dt
 
     with h5py.File(f'{name_file}', 'r') as hdf_file:
         V = hdf_file['V'][:]
 
-    a, b = signal.butter(3, [4, 12], 'bandpass', fs = 10000, output='ba')
-    V_filt_1 = filtfilt(a, b, V)
+    sim_time = np.linspace(-0.5 * duration, 0.5 * duration, V.size)
+    b, a = signal.butter(2, [4, 12], 'bandpass', fs = fs, output='ba')
+    V_filt_theta = filtfilt(b, a, V)
 
-    a, b = signal.butter(3, 2, 'low', fs = 10000)
-    V_filt_2 = np.abs(hilbert(filtfilt(a, b, V)))
-    # V_filt_2 = filtfilt(b, a, V)
+    b, a = signal.butter(2, 2, 'low', fs = fs)
+    # V_filt_slow = np.abs(hilbert(filtfilt(b, a, V)))
+    V_filt_slow = filtfilt(b, a, V)
 
-    ax.plot(sim_time, V)
-    ax.plot(sim_time, V_filt_1-np.max(V_filt_1)-80)
-    ax.plot(sim_time, V_filt_2-np.max(V_filt_2)-70)
+    ax.plot(sim_time, V, label="Raw potential")
+    ax.plot(sim_time, V_filt_theta-np.max(V_filt_theta)-80, label="Theta comment")
+    ax.plot(sim_time, V_filt_slow-np.max(V_filt_slow)-70, label="Slow comment")
     ax.set_title('A', loc='left')
-    ax.set(xlabel='t, ms', ylabel='V, mV', xlim=[0, duration])
-    # ax.legend(loc='upper left')
+    ax.set(xlabel='t, ms', ylabel='V, mV', xlim=[-0.5*duration, 0.5*duration])
+    ax.legend(loc='upper right')
     ax.grid()
 
     return ax
 
 def fig2B(ax, name_file, duration, dt):
-    sim_time = np.arange(0, duration, dt)
+
 
     with h5py.File(f'{name_file}', 'r') as hdf_file:
         spike_rate = hdf_file['spike_rate'][:]
@@ -89,74 +89,60 @@ def fig2B(ax, name_file, duration, dt):
         sigma_place_field = hdf_file.attrs['sigma_place_field']
         teor_spike_rate = hdf_file['teor_spike_rate'][:]
         V = hdf_file['V'][:]
-
+    sim_time = np.linspace(-0.5 * duration, 0.5 * duration, V.size)
     
-    place_field_center = 30
 
-    precession_slope = animal_velosity * np.deg2rad(precession_slope)
-    kappa_place_cell = r2kappa(R_place_cell)
-    sigma_place_field = sigma_place_field / animal_velosity # recalculate to sec
-    place_field_center = place_field_center / animal_velosity
 
-    # teor_spike_rate = get_teor_spike_rate(sim_time, precession_slope, theta_freq, kappa_place_cell,  sigma=sigma_place_field, center=place_field_center)
-    # print(teor_spike_rate)
-    y = (np.cos(2*np.pi*theta_freq*0.001*sim_time)+1)/2
-    index_teor = signal.argrelmax(teor_spike_rate)
-    index_exp = signal.argrelmax(spike_rate)
+    # precession_slope = animal_velosity * np.deg2rad(precession_slope)
 
-    peaks, _ = signal.find_peaks(V, height=(20, 60))
-    # print(peaks)
-    # t = sim_time[peaks]
+    cos_ref = (np.cos(2*np.pi*theta_freq*0.001*sim_time)+1)/2
+    index_teor, _ = signal.find_peaks(teor_spike_rate, height=0.1)
+    index_exp, _ = signal.find_peaks(spike_rate, height=0.1)
 
+    firing_idxs, _ = signal.find_peaks(V, height=-10)
 
 
     ax.plot(sim_time, teor_spike_rate,  linewidth=1, label='target spike rate')
     ax.plot(sim_time, spike_rate, linewidth=1, label='simulated spike rate')
-    ax.plot(sim_time, y, linestyle = '--')
-    ax.scatter(sim_time[index_teor], y[index_teor])
-    ax.scatter(sim_time[peaks], y[peaks])
+    ax.plot(sim_time, cos_ref, linestyle = '--', linewidth=0.5)
+    ax.scatter(sim_time[index_teor], cos_ref[index_teor])
+    ax.scatter(sim_time[firing_idxs], cos_ref[firing_idxs])
 
-    ax.legend(loc='upper left')
+    ax.legend(loc='upper right')
     ax.set_title('B', loc='left')
-    ax.set(xlabel='t, ms', ylabel='$f/f_0$', xlim=[0, duration])
+    ax.set(xlabel='t, ms', ylabel='$f/f_0$', xlim=[-0.5*duration, 0.5*duration])
     # ax.legend()
     ax.grid()
 
     return ax
 
-def fig2C(ax, name_file, duration, dt, Vreset):
-    sim_time = np.arange(0, duration, dt)
+def fig2C(ax, name_file, duration, dt):
+
 
     with h5py.File(f'{name_file}', 'r') as hdf_file:
-        f = hdf_file.attrs['theta_freq']
+        theta_freq = hdf_file.attrs['theta_freq']
         V = hdf_file['V'][:]
-        vel = hdf_file.attrs['animal_velosity']
-        teor_spike_rate = hdf_file['teor_spike_rate'][:]
+        animal_velosity = hdf_file.attrs['animal_velosity']
 
-    # print(V)
 
-    # f *= 0.001
-    # T = 1/f
+    sim_time = np.linspace(-0.5 * duration, 0.5 * duration, V.size)
+    firing_idxs, _ = signal.find_peaks(V, height=-10)
 
-    # t = sim_time[V == Vreset]
-    peaks, _ = signal.find_peaks(V, height=(20, 30))
-    # print(peaks)
-    # peaks = signal.argrelmax(teor_spike_rate)
-    t = sim_time[peaks]
-    # ph = f*(t - t//T*T)*360
-    x = t*vel*0.001
-    ph = 2*np.pi*f*t*0.001
+    firing = sim_time[firing_idxs]
+    animal_position = firing*animal_velosity*0.001
+    phases_firing = 2*np.pi*theta_freq*firing*0.001
 
-    sl = np.rad2deg(get_slope(ph, x))
-    ph = np.rad2deg(ph%(2*np.pi))
+    sl = np.rad2deg(get_slope(phases_firing, animal_position))
+    phases_firing = np.rad2deg(phases_firing%(2*np.pi))
 
-    # print(T, t)
 
-    ax.scatter(t, ph, s=5, label=f'slope = {sl:0.3f}')
+
+    ax.scatter(animal_position, phases_firing, s=5, label=f'slope = {sl:0.1f}$^0/cm$')
     # ax.set_label('Label via method')
     ax.set_title('C', loc='left')
-    ax.set(xlabel='t, ms', ylabel='$\Delta \\varphi, ^{\circ}$', xlim=[0, duration], ylim=[0, 360])
-    ax.legend(loc='upper left')
+    position_start = -0.5*duration*0.001*animal_velosity
+    ax.set(xlabel='animal position, cm', ylabel='$\Delta \\varphi, ^{\circ}$', xlim=[position_start, -position_start], ylim=[0, 360])
+    ax.legend(loc='upper right')
     ax.grid()
 
     return ax
@@ -164,40 +150,38 @@ def fig2C(ax, name_file, duration, dt, Vreset):
 def fig2D(ax, name_file, duration, dt, param):
 
 
-    data = pd.read_csv('data_3.csv', header=0, comment="#", index_col=0)
+    data = pd.read_csv('inputs_data.csv', header=0, comment="#", index_col=0)
 
-    sim_time = np.arange(0, duration, dt)
+    sim_time = np.arange(0, duration, dt) - 0.5*duration
 
     with h5py.File(f'{name_file}', 'r') as hdf_file:
         W = hdf_file['Weights'][:]
         S = hdf_file['Sigmas'][:]
         C = hdf_file['Centers'][:]
-        theta = hdf_file.attrs['theta_freq']
 
     g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
-    with h5py.File(f'conductances_{theta}.hdf5', "r") as hdf_file:
+    with h5py.File('./output/conductances.hdf5', "r") as hdf_file:
         for inp_idx, input_name in enumerate(data.columns):
             g_syn[:, inp_idx] = hdf_file[input_name][:]
 
     g_syn_wcs = np.copy(g_syn)
 
-    # print(g_syn_wcs.shape)
+
     for idx in range(g_syn_wcs.shape[1]):
-        # print(idx)
-        g_syn_wcs[:, idx] *= W[idx] * np.exp(-0.5 * ((C[idx] - sim_time) / S[idx]) ** 2)
+        g_syn_wcs[:, idx] *= W[idx] * np.exp(-0.5 * ( (C[idx]-sim_time) / S[idx])**2 )
     
     # g = np.sum(g_syn_wcs, axes=1)
 
     if param['mode'] == 'all':
         g = np.sum(g_syn_wcs, axis=1)
         label = 'all'
-    elif param['mode'] == 'pos':
+    elif param['mode'] == 'excitatory':
         g = np.sum(g_syn_wcs[:, :2], axis=1)
-        label = 'pos'
+        label = 'excitatory'
         ax.set_title('D', loc='left')
-    elif param['mode'] == 'neg':
+    elif param['mode'] == 'inhibitory':
         g = np.sum(g_syn_wcs[:, 2:], axis=1)
-        label = 'neg'
+        label = 'inhibitory'
     else:
         g = g_syn_wcs[:, int(param['mode'])]
         label = data.columns[int(param['mode'])]
@@ -205,10 +189,11 @@ def fig2D(ax, name_file, duration, dt, param):
             ax.set_title('E', loc='left')
     ax.plot(sim_time, g, label=label)
     if param['num'] == 0:
-        ax.set(xlabel='t, ms', ylabel='g, nS', xlim=[0, duration])
+        ax.set(xlabel='t, ms', ylabel='g, nS', xlim=[sim_time[0], sim_time[-1]])
     else:
-        ax.set(xlabel='t, ms', xlim=[0, duration])
-    ax.legend(loc='upper left')
+        ax.set(xlabel='t, ms', xlim=[sim_time[0], sim_time[-1]])
+    ax.set_ylim(0, 1.5 * np.max(g))
+    ax.legend(loc='upper right')
     ax.grid()
 
     return ax
@@ -273,16 +258,15 @@ def get_Dist(slope, phi_train, x_train):
     return D
     
 def get_slope(phases_train, x_train):
-    res = minimize_scalar(get_Dist, args=(phases_train, x_train), bounds=[-0.5, 0.5], method='bounded')
-    slope = float(res.x)
+    sl = np.linspace(-0.5, 0.5, 10000)
+    D = []
+    for s in sl:
+         D.append(get_Dist(s, phases_train, x_train))
 
-    # sl = np.linspace(-0.5, 0.5, 10000)
-    # D = []
-    # for s in sl:
-    #     D.append(get_Dist(s, phases_train, x_train))
+    slope = sl[np.argmin(D)]
 
-    # plt.plot(sl, D)
-    # plt.show()
+    # res = minimize_scalar(get_Dist, x0=x0, args=(phases_train, x_train), bounds=[-0.5, 0.5], method='bounded')
+    # slope = float(res.x)
 
     return slope
 
@@ -294,18 +278,12 @@ def correl(phases_train, x_train):
     cor = ((r_xc**2 + r_xs**2 - 2*r_xc*r_xs*r_cs)/(1 - r_cs**2))**0.5
     return cor
 
-def get_slr(V, f, vel, duration, dt, Vreset):
+def get_slr(V, f, vel, duration, dt):
     sim_time = np.arange(0, duration, dt)
 
-    # f *= 0.001
-    # T = 1/f
-
-    # t = sim_time[V == Vreset]
-    # peaks = signal.argrelmax(teor_spike_rate)
     peaks, _ = signal.find_peaks(V, height=(20, 30))
 
     t = sim_time[peaks]
-    # ph = np.deg2rad(f*(t - t//T*T)*360)
     ph = 2*np.pi*f*t*0.001
     x = t*vel*0.001
 
@@ -465,7 +443,7 @@ def fig4A(ax, directory, files, param, plot_param):
     return ax    
 
 def fig2_for_exp_4():
-    directory = 'output/multipal_optimization'
+    directory = './output'
 
     files = os.listdir(directory)
     files = [file for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5']
