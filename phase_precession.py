@@ -209,7 +209,7 @@ def main(num, param):
     print('start optimization')
     ###################################################################
     ### Параметры для симуляции
-    duration = 5000 # ms
+    duration = 3000 # ms
     dt = 0.1        # ms
     
     theta_freq = param['theta_freq'] # 8 Hz
@@ -428,7 +428,7 @@ if __name__ == '__main__':
 
 
     # default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 3, 'theta_freq': 8}
-    default_param = {'precession_slope': 5, 'animal_velosity': 10, 'R_place_cell': 0.5, 'sigma_place_field': 4,
+    default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 4,
                      'theta_freq': 8}
 
     lenth = [len(precession_slope), len(animal_velosity), \
