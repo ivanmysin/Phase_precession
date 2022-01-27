@@ -138,6 +138,8 @@ def fig2D(ax, flag, name_file, duration, dt):
         S = hdf_file['Sigmas'][:]
         C = hdf_file['Centers'][:]
 
+    # print(1)
+
     g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
     with h5py.File('./output/conductances.hdf5', "r") as hdf_file:
         for inp_idx, input_name in enumerate(data.columns):
