@@ -19,6 +19,8 @@ def fig2(name_file):
     duration = 3000
     dt = 0.1
 
+    # print(1)
+
     # fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(5, 2.7))
 
     fig = plt.figure()
@@ -39,41 +41,46 @@ def fig2(name_file):
     plt.show()
 
 def fig2A(ax, name_file, duration, dt):
-    sim_time = np.arange(0, duration, dt)
+
 
     with h5py.File(f'{name_file}.hdf5', 'r') as hdf_file:
         V = hdf_file['V'][:]
-        
+
+    sim_time = np.linspace(-0.5 * duration, 0.5 * duration, V.size)
     ax.plot(sim_time, V)
     ax.set_title('A', loc='left')
-    ax.set(xlabel='t, ms', ylabel='V, mV', xlim=[0, duration])
+    ax.set(xlabel='t, ms', ylabel='V, mV', xlim=[-0.5*duration, 0.5*duration])
     # ax.legend(loc='upper left')
     ax.grid()
 
     return ax
 
 def fig2B(ax, name_file, duration, dt):
-    sim_time = np.arange(0, duration, dt)
+
 
     with h5py.File(f'{name_file}.hdf5', 'r') as hdf_file:
         spike_rate = hdf_file['spike_rate'][:]
+        V = hdf_file['V'][:]
+        teor_spike_rate = hdf_file['teor_spike_rate'][:]
         precession_slope = hdf_file.attrs['precession_slope']
         theta_freq = hdf_file.attrs['theta_freq']
         R_place_cell = hdf_file.attrs['R_place_cell']
         animal_velosity = hdf_file.attrs['animal_velosity']
         sigma_place_field = hdf_file.attrs['sigma_place_field']
-    
-    place_field_center = 30
 
-    precession_slope = animal_velosity * np.deg2rad(precession_slope)
-    kappa_place_cell = r2kappa(R_place_cell)
-    sigma_place_field = sigma_place_field / animal_velosity # recalculate to sec
-    place_field_center = place_field_center / animal_velosity
+    sim_time = np.linspace(-0.5*duration, 0.5*duration, spike_rate.size)
 
-    teor_spike_rate = get_teor_spike_rate(sim_time, precession_slope, theta_freq, kappa_place_cell,  sigma=sigma_place_field, center=place_field_center)
+
+
+    # precession_slope = animal_velosity * np.deg2rad(precession_slope)
+    # kappa_place_cell = r2kappa(R_place_cell)
+    # sigma_place_field = sigma_place_field / animal_velosity # recalculate to sec
+    # place_field_center = place_field_center / animal_velosity
+
+    # teor_spike_rate = get_teor_spike_rate(sim_time, precession_slope, theta_freq, kappa_place_cell,  sigma=sigma_place_field, center=place_field_center)
     y = (np.cos(2*np.pi*theta_freq*0.001*sim_time)+1)/2
-    index_teor = signal.argrelmax(teor_spike_rate)
-    index_exp = signal.argrelmax(spike_rate)
+    index_teor, _ = signal.find_peaks(teor_spike_rate, height=0.1)
+    index_exp, _ = signal.find_peaks(V, height=-10)  # signal.argrelmax(spike_rate)
 
     ax.plot(sim_time, teor_spike_rate,  linewidth=1, label='target spike rate')
     ax.plot(sim_time, spike_rate, linewidth=1, label='simulated spike rate')
@@ -83,35 +90,39 @@ def fig2B(ax, name_file, duration, dt):
 
     ax.legend(loc='upper left')
     ax.set_title('B', loc='left')
-    ax.set(xlabel='t, ms', xlim=[0, duration])
+    ax.set(xlabel='t, ms', xlim=[-0.5*duration, 0.5*duration])
     # ax.legend()
     ax.grid()
 
     return ax
 
 def fig2C(ax, name_file, duration, dt):
-    sim_time = np.arange(0, duration, dt)
-    Vreset = -80
+
+    #Vreset = -80
 
     with h5py.File(f'{name_file}.hdf5', 'r') as hdf_file:
-        f = hdf_file.attrs['theta_freq']
+        theta_freq = hdf_file.attrs['theta_freq']
         V = hdf_file['V'][:]
 
-    f *= 1
-    T = 1/f
+    #sim_time = np.linspace(-0.5*duration, 0.5*duration, V.size)
+    # f *= 1
+    # T = 1/f
 
     t, _ = signal.find_peaks(V, height=-10)  # sim_time[V == Vreset]
-    t = t * dt
+    t = t * dt - 0.5*duration
+
     # print(t)
-    ph = f*(t - t//T*T)*360
-    # print()
+    ph = 360*t*theta_freq % 360
+        
+
 
 
     ax.scatter(t, ph, s=5)
     ax.set_label('Label via method')
     # ax.title(label='C', loc='left')
     ax.set_title('C', loc='left')
-    ax.set(xlabel='t, ms', ylabel='$\Delta \\varphi, ^{\circ}$', xlim=[0, duration])
+    ax.set(xlabel='t, ms', ylabel='$\Delta \\varphi, ^{\circ}$', xlim=[-0.5*duration, 0.5*duration])
+    ax.set_ylim(0, 360)
     # ax.legend(loc='upper left')
     ax.grid()
 
@@ -120,7 +131,7 @@ def fig2C(ax, name_file, duration, dt):
 def fig2D(ax, flag, name_file, duration, dt):
     data = pd.read_csv('inputs_data.csv', header=0, comment="#", index_col=0)
 
-    sim_time = np.arange(0, duration, dt)
+    sim_time = np.arange(0, duration, dt) - 0.5*duration
 
     with h5py.File(f'{name_file}.hdf5', 'r') as hdf_file:
         W = hdf_file['Weights'][:]
@@ -154,7 +165,7 @@ def fig2D(ax, flag, name_file, duration, dt):
         g = np.sum(g_syn_wcs[:, 2:], axis=1)
         label = 'neg'
     ax.plot(sim_time, g, label=label)
-    ax.set(xlabel='t, ms', ylabel='g', xlim=[0, duration])
+    ax.set(xlabel='t, ms', ylabel='g', xlim=[-0.5*duration, 0.5*duration])
     ax.legend(loc='upper left')
     ax.grid()
 
@@ -163,5 +174,5 @@ def fig2D(ax, flag, name_file, duration, dt):
 
 
 if __name__ == '__main__':
-    name_file = 'output/default_experiment_'
+    name_file = 'output/default_experiment'
     fig2(name_file)

@@ -1,8 +1,8 @@
 Parametr,ca3,ec3,cck,pv,ngf,ivy,olm,aac,bis
-# units tau_rise and tau_decay is ms, E is mV, phi is deg, R is ray length, g_max is mS,
+# units tau_rise and tau_decay is ms, E is mV, phi is deg, R is ray length, g_max is mS,,,,,
 tau_rise,0.5,0.5,0.2,0.3,9.0,1.1,0.13,0.28,0.11
 tau_decay,3.0,3.0,4.2,6.2,39.0,11.0,11.0,8.4,9.7
 E,0.0,0.0,-75.0,-75.0,-75.0,-75.0,-75.0,-75.0,-75.0
-phi,90,270,180,90,0,270,0,180,0
+phi,90,270,270,90,0,270,180,0,180
 R,0.3,0.3,0.35,0.35,0.35,0.35,0.35,0.35,0.35
-g_max,5e-07,5e-07,5e-07,5e-07,5e-07,5e-07,5e-07,5e-07,5e-07
+g_max,0.0000005,0.0000005,0.0000005,0.0000005,0.0000005,0.0000005,0.0000005,0.0000005,0.0000005

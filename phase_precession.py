@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.signal.windows import parzen
 import time
-from scipy.optimize import minimize, differential_evolution, shgo, dual_annealing
+from scipy.optimize import differential_evolution
 from scipy.integrate import solve_ivp
 from numba import jit
 import h5py
@@ -13,6 +13,7 @@ from numpy.random import randint
 from copy import copy
 import os
 from scipy import signal as sig
+from multiprocessing import Pool
 
 @jit(nopython=True)
 def inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq):
@@ -56,6 +57,7 @@ def inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq):
 #         return spike_rate, Vhist
 #     else:
 #         return spike_rate, np.empty(0)
+
 
 
 def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
@@ -146,6 +148,8 @@ def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
     # Vdend = pyramidal.getCompartmentByName('dendrite').getVhist()
     spike_rate = np.zeros_like(Vsoma)
 
+    # print(sim_time.size, Vsoma.size, duration)
+
     peaks = find_peaks(Vsoma, height=30)[0]
     spike_rate[peaks] += 1
     spike_rate = np.convolve(spike_rate, parzen_window, mode='same')
@@ -162,7 +166,9 @@ def get_teor_spike_rate(t, slope, theta_freq, kappa, sigma=0.15, center=5):
     # t = 0.001 * t # ms to sec
     teor_spike_rate = np.exp(-0.5 * ((t - center)/sigma)**2 )
     precession = 0.001 * t * slope
-    teor_spike_rate *= np.exp(kappa * np.cos(2*np.pi*theta_freq*t*0.001 + precession) ) # 0.5 *
+
+    phi0 = -2 * np.pi * theta_freq * 0.001 * center - np.pi - precession[np.argmax(teor_spike_rate)]
+    teor_spike_rate *= np.exp(kappa * np.cos(2*np.pi*theta_freq*t*0.001 + precession + phi0) ) # 0.5 *
     return teor_spike_rate
 
 @jit(nopython=True)
@@ -192,11 +198,6 @@ def loss(X, teor_spike_rate, g_syn, sim_time, Erev, parzen_window, issaveV):
 
 
     spike_rate, tmp = run_model(g_syn_wcs, sim_time, Erev, parzen_window, issaveV)
-
-    # weitgh_balance = np.sum(W * np.sign(Erev + 2))
-    # if weitgh_balance < 1:
-    #      return np.exp(-10*weitgh_balance)
-    # L = np.sum( (teor_spike_rate - spike_rate)**2 )
     L = np.mean( np.log( (teor_spike_rate+1)/(spike_rate+1) )**2 )
     return L
 ##################################################################
@@ -223,6 +224,7 @@ def main(num, param):
     
     ### Делаем предвычисления
     sim_time = np.arange(0, duration, dt)
+    sim_time = 0.1 * np.ceil(10 * sim_time)
     precession_slope = animal_velosity * np.deg2rad(precession_slope)
     kappa_place_cell = r2kappa(R_place_cell)
     sigma_place_field = 1000 * sigma_place_field / animal_velosity # recalculate to ms
@@ -233,7 +235,7 @@ def main(num, param):
     data = pd.read_csv(datafile, header=0, comment="#", index_col=0)
     data.loc["phi"]  = np.deg2rad(data.loc["phi"])
     data.loc["kappa"] = [ r2kappa(r) for r in data.loc["R"] ]
-    parzen_window = parzen(151) # parzen(1001)
+    parzen_window = parzen(1001) # parzen(401) # parzen(701)
     ####################################################################
     g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
     Erev = np.zeros( len(data.columns), dtype=np.float64)
@@ -247,7 +249,7 @@ def main(num, param):
             args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
             sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
             g = sol.sol(sim_time)[0]
-            g *= 1.0 / np.max(g)
+            g *= 1.0 / np.max(g) #0.1 for LIF !!!!!!!!
             g_syn[:, inp_idx] = g
             Erev[inp_idx] = data.loc["E"][input_name]
     
@@ -264,11 +266,22 @@ def main(num, param):
     W = 0.1*np.ones(n_pops, dtype=np.float64)
     W[0] = 0.5
     W[1] = 0.5
-    
+
+
+
+
     centers = np.zeros_like(W) + place_field_center
     centers[0] = ca3_center
     centers[1] = ec3_center
-    
+
+    # centers[2] += -200.0 # cck
+    # centers[3] += 200.0 # pv
+    # centers[4] += 200.0 # ngf
+    # centers[5] += -200.0 # ivy
+    # centers[6] += 400.0 # olm
+    # centers[7] += 0 # aac
+    # centers[8] += 0 # bis
+
     sigmas = np.zeros_like(centers) + sigma_place_field
     X[0::3] = W
     X[1::3] = centers
@@ -287,11 +300,11 @@ def main(num, param):
     
     # Изменяем границы для параметров для СА3
     bounds[0][0] = 0.01 # вес не менее 0,2
-    # bounds[1][0] = place_field_center # центр входа от СА3 не ранее центра в СА1
+    bounds[1][0] = place_field_center # центр входа от СА3 не ранее центра в СА1
     
     # Изменяем границы для параметров для EC3
     bounds[3][0] = 0.01 # вес не менее 0,2
-    # bounds[4][1] = place_field_center # центр входа от EC3 ранее центра в СА1
+    bounds[4][1] = place_field_center # центр входа от EC3 ранее центра в СА1
     
    
     
@@ -299,15 +312,11 @@ def main(num, param):
 
     timer = time.time()
     #mutation = (0.5, 1.9)
-    try:
-        sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=0.7, \
-                                 mutation=0.7, args=loss_args, bounds=bounds,  maxiter=40, \
+    sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=1.7, \
+                                 mutation=1.7, args=loss_args, bounds=bounds,  maxiter=100, \
                                  workers=-1, updating='deferred', disp=True, \
                                  strategy='best2bin')
-    except:
-        print("Error in optimization")
-        return
-    
+
     X = sol.x
     
     print("Time of optimization ", time.time() - timer, " sec")
@@ -334,7 +343,7 @@ def main(num, param):
     theta_phases = theta_phases % (2*np.pi)
     theta_phases[theta_phases > np.pi] -= 2*np.pi
     
-    fig, axes = plt.subplots(nrows=3, sharex=True)
+    fig, axes = plt.subplots(nrows=3)
     axes[0].plot(sim_time, Vhist)
     axes[1].plot(sim_time, teor_spike_rate,  linewidth=1, label='target spike rate')
     axes[1].plot(sim_time, spike_rate, linewidth=1, label='simulated spike rate')
@@ -357,7 +366,9 @@ def main(num, param):
     plt.close('all')
     return 
             
-def run_model_with_parameters(params, default_param, W, C, S, dt, duration, output_path, filename):
+def run_model_with_parameters(args):
+    params, default_param, W, C, S, dt, duration, output_path, filename = args
+
     sim_time = np.arange(0, duration, dt)
 
     C = C * default_param['animal_velosity']/params['animal_velosity'] + 0.5*duration
@@ -410,7 +421,11 @@ if __name__ == '__main__':
     R_place_cell = [0.4, 0.5, 0.55]
     sigma_place_field = [2, 3, 4, 5]
     theta_freq = [4, 6, 8, 10, 12]
-    default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 3, 'theta_freq': 8}
+
+
+    # default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 3, 'theta_freq': 8}
+    default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 4,
+                     'theta_freq': 8}
 
     lenth = [len(precession_slope), len(animal_velosity), \
             len(R_place_cell), len(sigma_place_field), \
@@ -418,26 +433,34 @@ if __name__ == '__main__':
     input_params = []
 
     # optimize to the default params
-    main("default_experiment", default_param)
+    main("test_experiment", default_param)
 
     # Параметры модели: частота тета-ритма, скорость животного, размера поля места (сигма), веса входов, их центры и сигмы.
     # run optimizeed model with different params
     # dt = 0.1
-    # duration = 3000
-    # output_path = './output/research_default_optimization/'
-    # conductance_file = './output/conductances.hdf5'
+    # duration = 10000
+    # output_path = './output/default_optimization/'
+    # # conductance_file = './output/conductances.hdf5'
     # with h5py.File('./output/default_experiment.hdf5', "r") as hdf_file:
     #     W = hdf_file['Weights'][:]
     #     C = hdf_file['Centers'][:]
     #     S = hdf_file['Sigmas'][:]
     #
+    # run_model_args = []
     # for param_name in ['theta_freq', 'animal_velosity']:
-    #     for param_var in globals()[param_name]:
-    #         param = copy(default_param)
-    #         param[param_name] = param_var
-    #         filename = param_name + str(param_var)
-    #         run_model_with_parameters(param, default_param, W, C, S, dt, duration, output_path, filename)
+    #      for param_var in globals()[param_name]:
+    #          param = copy(default_param)
+    #          param[param_name] = param_var
+    #          filename = param_name + str(param_var)
+    #          #run_model_with_parameters(param, default_param, W, C, S, dt, duration, output_path, filename)
+    #          run_model_args.append((param, default_param, W, C, S, dt, duration, output_path, filename) )
     #
+    # with Pool(processes=4) as p:
+    #     p.map( run_model_with_parameters, run_model_args)
+
+
+
+    #####################################################################################
     # for param_name in ['W', 'C', 'S']:
     #     for p_idx, param_var in enumerate(globals()[param_name]):
     #         param_range = np.linspace(0.8*param_var, 1.2*param_var, 10)

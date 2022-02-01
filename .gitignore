@@ -3,7 +3,7 @@
 !*/output/.gitkeep
 lib.cpp
 .idea/
-
+.~*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
