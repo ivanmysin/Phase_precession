@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.signal.windows import parzen
 import time
-from scipy.optimize import minimize, differential_evolution, shgo, dual_annealing
+from scipy.optimize import differential_evolution
 from scipy.integrate import solve_ivp
 from numba import jit
 import h5py
@@ -13,6 +13,7 @@ from numpy.random import randint
 from copy import copy
 import os
 from scipy import signal as sig
+from multiprocessing import Pool
 
 @jit(nopython=True)
 def inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq):
@@ -239,7 +240,7 @@ def main(num, param):
     data = pd.read_csv(datafile, header=0, comment="#", index_col=0)
     data.loc["phi"]  = np.deg2rad(data.loc["phi"])
     data.loc["kappa"] = [ r2kappa(r) for r in data.loc["R"] ]
-    parzen_window = parzen(1001) # parzen(1001)
+    parzen_window = parzen(701) # parzen(401) # parzen(1001)
     ####################################################################
     g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
     Erev = np.zeros( len(data.columns), dtype=np.float64)
@@ -305,24 +306,11 @@ def main(num, param):
 
     timer = time.time()
     #mutation = (0.5, 1.9)
-    #try:
     sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=0.7, \
-                                 mutation=0.7, args=loss_args, bounds=bounds,  maxiter=40, \
+                                 mutation=0.7, args=loss_args, bounds=bounds,  maxiter=1000, \
                                  workers=-1, updating='deferred', disp=True, \
                                  strategy='best2bin')
-    # except:
-    #     print("Error in optimization")
-    #     for bnd_idx, bnd in enumerate(bounds):
-    #         if X[bnd_idx] < bnd[0] or X[bnd_idx] > bnd[1]:
-    #             if bnd_idx % 3 == 0:
-    #                 print('Outside weight ', bnd_idx//3)
-    #             elif bnd_idx % 3 == 1:
-    #                 print('Outside center ', bnd_idx//3)
-    #             elif bnd_idx % 3 == 2:
-    #                 print('Outside sigma ', bnd_idx//3)
-    #
-    #     return
-    
+
     X = sol.x
     
     print("Time of optimization ", time.time() - timer, " sec")
@@ -372,7 +360,9 @@ def main(num, param):
     plt.close('all')
     return 
             
-def run_model_with_parameters(params, default_param, W, C, S, dt, duration, output_path, filename):
+def run_model_with_parameters(args):
+    params, default_param, W, C, S, dt, duration, output_path, filename = args
+
     sim_time = np.arange(0, duration, dt)
 
     C = C * default_param['animal_velosity']/params['animal_velosity'] + 0.5*duration
@@ -437,26 +427,30 @@ if __name__ == '__main__':
     input_params = []
 
     # optimize to the default params
-    main("default_experiment", default_param)
+    # main("default_experiment", default_param)
 
     # Параметры модели: частота тета-ритма, скорость животного, размера поля места (сигма), веса входов, их центры и сигмы.
     # run optimizeed model with different params
-    # dt = 0.1
-    # duration = 3000
-    # output_path = './output/research_default_optimization/'
+    dt = 0.1
+    duration = 10000
+    output_path = './output/default_optimization/'
     # conductance_file = './output/conductances.hdf5'
-    # with h5py.File('./output/default_experiment.hdf5', "r") as hdf_file:
-    #     W = hdf_file['Weights'][:]
-    #     C = hdf_file['Centers'][:]
-    #     S = hdf_file['Sigmas'][:]
-    #
-    # for param_name in ['theta_freq', 'animal_velosity']:
-    #     for param_var in globals()[param_name]:
-    #         param = copy(default_param)
-    #         param[param_name] = param_var
-    #         filename = param_name + str(param_var)
-    #         run_model_with_parameters(param, default_param, W, C, S, dt, duration, output_path, filename)
-    #
+    with h5py.File('./output/default_experiment.hdf5', "r") as hdf_file:
+        W = hdf_file['Weights'][:]
+        C = hdf_file['Centers'][:]
+        S = hdf_file['Sigmas'][:]
+
+    run_model_args = []
+    for param_name in ['theta_freq', 'animal_velosity']:
+         for param_var in globals()[param_name]:
+             param = copy(default_param)
+             param[param_name] = param_var
+             filename = param_name + str(param_var)
+             #run_model_with_parameters(param, default_param, W, C, S, dt, duration, output_path, filename)
+             run_model_args.append((param, default_param, W, C, S, dt, duration, output_path, filename) )
+
+    with Pool(processes=4) as p:
+        p.map( run_model_with_parameters, run_model_args)
     # for param_name in ['W', 'C', 'S']:
     #     for p_idx, param_var in enumerate(globals()[param_name]):
     #         param_range = np.linspace(0.8*param_var, 1.2*param_var, 10)
