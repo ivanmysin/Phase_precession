@@ -188,6 +188,11 @@ def fig2D(ax, name_file, duration, dt, param):
         if param['mode'] == '0':
             ax.set_title('E', loc='left')
     ax.plot(sim_time, g, label=label)
+    # if label == 'cck':
+    #     ax.plot(sim_time, g_syn_wcs[:, 3], label='PV')
+
+
+
     if param['num'] == 0:
         ax.set(xlabel='t, ms', ylabel='g, nS', xlim=[sim_time[0], sim_time[-1]])
     else:

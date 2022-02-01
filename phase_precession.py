@@ -27,38 +27,38 @@ def inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq):
     return out
 
 
-"""
-@jit(nopython=True)
-def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
-    El = -60
-    VT = -50
-    Vreset = -80
-    gl = 0.1
-    V = El
-    C = 1
-    dt = sim_time[1] - sim_time[0]
-    spike_rate = np.zeros_like(sim_time)
 
-    if issaveV:
-        Vhist = np.zeros_like(sim_time)
+# @jit(nopython=True)
+# def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
+#     El = -60
+#     VT = -50
+#     Vreset = -80
+#     gl = 0.1
+#     V = El
+#     C = 1
+#     dt = sim_time[1] - sim_time[0]
+#     spike_rate = np.zeros_like(sim_time)
+#
+#     if issaveV:
+#         Vhist = np.zeros_like(sim_time)
+#
+#     for t_idx, t in enumerate(sim_time):
+#         Isyn = np.sum(g_syn[t_idx, :] * (Erev - V))
+#         V = V + dt * (gl*(El - V) + Isyn) / C
+#         if V > VT:
+#             V = Vreset
+#             spike_rate[t_idx] = 1
+#         if issaveV:
+#             Vhist[t_idx] = V
+#
+#     spike_rate = np.convolve(spike_rate, parzen_window)
+#     spike_rate = spike_rate[parzen_window.size//2:sim_time.size+parzen_window.size//2]
+#     if issaveV:
+#         return spike_rate, Vhist
+#     else:
+#         return spike_rate, np.empty(0)
 
-    for t_idx, t in enumerate(sim_time):
-        Isyn = np.sum(g_syn[t_idx, :] * (Erev - V))
-        V = V + dt * (gl*(El - V) + Isyn) / C
-        if V > VT:
-            V = Vreset
-            spike_rate[t_idx] = 1
-        if issaveV:
-            Vhist[t_idx] = V
 
-    spike_rate = np.convolve(spike_rate, parzen_window)
-    spike_rate = spike_rate[parzen_window.size//2:sim_time.size+parzen_window.size//2]
-    if issaveV:
-        return spike_rate, Vhist
-    else:
-        return spike_rate, np.empty(0)
-
-"""
 
 def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
     Erev = Erev + 60.0
@@ -198,11 +198,6 @@ def loss(X, teor_spike_rate, g_syn, sim_time, Erev, parzen_window, issaveV):
 
 
     spike_rate, tmp = run_model(g_syn_wcs, sim_time, Erev, parzen_window, issaveV)
-
-    # weitgh_balance = np.sum(W * np.sign(Erev + 2))
-    # if weitgh_balance < 1:
-    #      return np.exp(-10*weitgh_balance)
-    # L = np.sum( (teor_spike_rate - spike_rate)**2 )
     L = np.mean( np.log( (teor_spike_rate+1)/(spike_rate+1) )**2 )
     return L
 ##################################################################
@@ -240,7 +235,7 @@ def main(num, param):
     data = pd.read_csv(datafile, header=0, comment="#", index_col=0)
     data.loc["phi"]  = np.deg2rad(data.loc["phi"])
     data.loc["kappa"] = [ r2kappa(r) for r in data.loc["R"] ]
-    parzen_window = parzen(701) # parzen(401) # parzen(1001)
+    parzen_window = parzen(1001) # parzen(401) # parzen(701)
     ####################################################################
     g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
     Erev = np.zeros( len(data.columns), dtype=np.float64)
@@ -254,7 +249,7 @@ def main(num, param):
             args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
             sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
             g = sol.sol(sim_time)[0]
-            g *= 1.0 / np.max(g) # !!!!!!!!
+            g *= 1.0 / np.max(g) #0.1 for LIF !!!!!!!!
             g_syn[:, inp_idx] = g
             Erev[inp_idx] = data.loc["E"][input_name]
     
@@ -271,11 +266,22 @@ def main(num, param):
     W = 0.1*np.ones(n_pops, dtype=np.float64)
     W[0] = 0.5
     W[1] = 0.5
-    
+
+
+
+
     centers = np.zeros_like(W) + place_field_center
     centers[0] = ca3_center
     centers[1] = ec3_center
-    
+
+    # centers[2] += -200.0 # cck
+    # centers[3] += 200.0 # pv
+    # centers[4] += 200.0 # ngf
+    # centers[5] += -200.0 # ivy
+    # centers[6] += 400.0 # olm
+    # centers[7] += 0 # aac
+    # centers[8] += 0 # bis
+
     sigmas = np.zeros_like(centers) + sigma_place_field
     X[0::3] = W
     X[1::3] = centers
@@ -306,8 +312,8 @@ def main(num, param):
 
     timer = time.time()
     #mutation = (0.5, 1.9)
-    sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=0.7, \
-                                 mutation=0.7, args=loss_args, bounds=bounds,  maxiter=1000, \
+    sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=1.7, \
+                                 mutation=1.7, args=loss_args, bounds=bounds,  maxiter=100, \
                                  workers=-1, updating='deferred', disp=True, \
                                  strategy='best2bin')
 
@@ -427,30 +433,34 @@ if __name__ == '__main__':
     input_params = []
 
     # optimize to the default params
-    # main("default_experiment", default_param)
+    main("test_experiment", default_param)
 
     # Параметры модели: частота тета-ритма, скорость животного, размера поля места (сигма), веса входов, их центры и сигмы.
     # run optimizeed model with different params
-    dt = 0.1
-    duration = 10000
-    output_path = './output/default_optimization/'
-    # conductance_file = './output/conductances.hdf5'
-    with h5py.File('./output/default_experiment.hdf5', "r") as hdf_file:
-        W = hdf_file['Weights'][:]
-        C = hdf_file['Centers'][:]
-        S = hdf_file['Sigmas'][:]
+    # dt = 0.1
+    # duration = 10000
+    # output_path = './output/default_optimization/'
+    # # conductance_file = './output/conductances.hdf5'
+    # with h5py.File('./output/default_experiment.hdf5', "r") as hdf_file:
+    #     W = hdf_file['Weights'][:]
+    #     C = hdf_file['Centers'][:]
+    #     S = hdf_file['Sigmas'][:]
+    #
+    # run_model_args = []
+    # for param_name in ['theta_freq', 'animal_velosity']:
+    #      for param_var in globals()[param_name]:
+    #          param = copy(default_param)
+    #          param[param_name] = param_var
+    #          filename = param_name + str(param_var)
+    #          #run_model_with_parameters(param, default_param, W, C, S, dt, duration, output_path, filename)
+    #          run_model_args.append((param, default_param, W, C, S, dt, duration, output_path, filename) )
+    #
+    # with Pool(processes=4) as p:
+    #     p.map( run_model_with_parameters, run_model_args)
 
-    run_model_args = []
-    for param_name in ['theta_freq', 'animal_velosity']:
-         for param_var in globals()[param_name]:
-             param = copy(default_param)
-             param[param_name] = param_var
-             filename = param_name + str(param_var)
-             #run_model_with_parameters(param, default_param, W, C, S, dt, duration, output_path, filename)
-             run_model_args.append((param, default_param, W, C, S, dt, duration, output_path, filename) )
 
-    with Pool(processes=4) as p:
-        p.map( run_model_with_parameters, run_model_args)
+
+    #####################################################################################
     # for param_name in ['W', 'C', 'S']:
     #     for p_idx, param_var in enumerate(globals()[param_name]):
     #         param_range = np.linspace(0.8*param_var, 1.2*param_var, 10)
