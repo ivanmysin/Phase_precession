@@ -9,9 +9,21 @@ import scipy.signal as signal
 from scipy.signal import hilbert, filtfilt
 from scipy.optimize import minimize_scalar
 from scipy.signal.windows import parzen
-from scipy.stats import spearmanr, pearsonr
 import os
 import shutil
+from processing import get_data, get_slr, make_folders
+
+neuron_colors = {
+        "ca3" : (1.0, 0.0, 0.0), # red
+        "pv": (0.0, 0.0, 1.0), # blue
+        "olm": (0.0, 0.0, 0.5), #
+        "cck": (0.0, 1.0, 0.0), # green
+        "ivy": (0.0, 0.5, 0.5), #
+        "ngf": (0.5, 0.5, 0.5), #
+        "bis": (0.1, 0.0, 0.5), #
+        "aac": (1.0, 0.0, 0.5), #
+        "ec3": (0.0, 1.0, 0.5), #
+    }
 
 def fig2(name_file, param_local):
     '''
@@ -38,7 +50,7 @@ def fig2(name_file, param_local):
     param = {'mode': 'inhibitory', 'num': 0}
     fig2D(ax5, name_file, duration, dt, param)
     param['mode'] = 'excitatory'
-    param['num'] = 1
+    param['num'] = 0
     fig2D(ax4, name_file, duration, dt, param)
     for i in range(2):
         for j in range(4):
@@ -49,8 +61,10 @@ def fig2(name_file, param_local):
 
     plt.tight_layout()
     plt.subplots_adjust(wspace=0.5, hspace=0.5)
+    if not os.path.exists('output/fig2'):
+        os.makedirs('output/fig2') 
     plt.savefig(f'output/fig2/{param_local["num"]}')
-    plt.show()
+    # plt.show()
     # fig.savefig(f"{name_file}.png")
 
 def fig2A(ax, name_file, duration, dt):
@@ -91,8 +105,6 @@ def fig2B(ax, name_file, duration, dt):
         V = hdf_file['V'][:]
     sim_time = np.linspace(-0.5 * duration, 0.5 * duration, V.size)
     
-
-
     # precession_slope = animal_velosity * np.deg2rad(precession_slope)
 
     cos_ref = (np.cos(2*np.pi*theta_freq*0.001*sim_time)+1)/2
@@ -132,12 +144,12 @@ def fig2C(ax, name_file, duration, dt):
     animal_position = firing*animal_velosity*0.001
     phases_firing = 2*np.pi*theta_freq*firing*0.001
 
-    sl = np.rad2deg(get_slope(phases_firing, animal_position))
+    sl, r = get_slr(V, theta_freq, animal_velosity, duration, dt)
     phases_firing = np.rad2deg(phases_firing%(2*np.pi))
 
 
 
-    ax.scatter(animal_position, phases_firing, s=5, label=f'slope = {sl:0.1f}$^0/cm$')
+    ax.scatter(animal_position, phases_firing, s=5, label=f'slope = {sl:0.1f}'+'$^{\circ}/cm$;'+f' r = {r:0.5f}')
     # ax.set_label('Label via method')
     ax.set_title('C', loc='left')
     position_start = -0.5*duration*0.001*animal_velosity
@@ -162,7 +174,8 @@ def fig2D(ax, name_file, duration, dt, param):
     g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
     with h5py.File('./output/conductances.hdf5', "r") as hdf_file:
         for inp_idx, input_name in enumerate(data.columns):
-            g_syn[:, inp_idx] = hdf_file[input_name][:]
+            if input_name != 'bis':
+                g_syn[:, inp_idx] = hdf_file[input_name][:]
 
     g_syn_wcs = np.copy(g_syn)
 
@@ -172,6 +185,7 @@ def fig2D(ax, name_file, duration, dt, param):
     
     # g = np.sum(g_syn_wcs, axes=1)
 
+    color = 'tab:blue'
     if param['mode'] == 'all':
         g = np.sum(g_syn_wcs, axis=1)
         label = 'all'
@@ -187,12 +201,20 @@ def fig2D(ax, name_file, duration, dt, param):
         label = data.columns[int(param['mode'])]
         if param['mode'] == '0':
             ax.set_title('E', loc='left')
-    ax.plot(sim_time, g, label=label)
+        # ax.set_color(neuron_colors[label])
+        # print(neuron_colors[label])
+        # ax.tick_params(color=neuron_colors[label])
+        color = neuron_colors[label]
+    ax.plot(sim_time, g, label=label, color=color)
     # if label == 'cck':
     #     ax.plot(sim_time, g_syn_wcs[:, 3], label='PV')
 
 
 
+    # if param['mode'] == 'inhibitory':
+    #     ax.set(xlabel='t, ms', xlim=[sim_time[0], sim_time[-1]])
+    # elif param['mode'] == 'excitatory':
+    #     ax.set(xlabel='t, ms', ylabel='g, nS', xlim=[sim_time[0], sim_time[-1]])
     if param['num'] == 0:
         ax.set(xlabel='t, ms', ylabel='g, nS', xlim=[sim_time[0], sim_time[-1]])
     else:
@@ -207,9 +229,8 @@ def fig3(directory):
 
     duration = 3000
     dt = 0.1
-    Vreset = -80
 
-    fig = plt.figure()
+    fig = plt.figure(figsize=(19,9))
     # ax1 = fig.add_subplot(84)
 
     param = {'mode': 'sl', 'type': 1, 'name': 'C', 'num': 0}
@@ -222,13 +243,13 @@ def fig3(directory):
     param['name'] = 'animal_velosity'
     plot_param['x'] = x['animal_velosity']
     plot_param['title'] = 'A'
-    fig3A(ax, directory, duration, dt, Vreset, param, plot_param)
+    fig3A(ax, directory, duration, dt, param, plot_param)
 
     ax = fig.add_subplot(4,2,2)
     param['name'] = 'theta_freq'
     plot_param['x'] = x['theta_freq']
     plot_param['title'] = 'B'
-    fig3A(ax, directory, duration, dt, Vreset, param, plot_param)
+    fig3A(ax, directory, duration, dt, param, plot_param)
 
     param['type'] = 1
     voc = ['C', 'D', 'E']
@@ -243,110 +264,19 @@ def fig3(directory):
                 plot_param['title'] = voc[i]
             else:
                 plot_param['title'] = ''
-            fig3A(ax, directory, duration, dt, Vreset, param, plot_param)
+            fig3A(ax, directory, duration, dt, param, plot_param)
 
     
-    # fig3A(ax1, directory, duration, dt, Vreset, param, plot_param)
     plt.subplots_adjust(wspace=0.45, hspace=0.5)
     plt.tight_layout()
-    plt.show()
-    
-def get_phi_0(slope, phi_train, x_train):
-    s = np.sum(np.cos(phi_train - 2 * np.pi * slope * x_train))
-    s += 1j * np.sum(np.sin(phi_train - 2 * np.pi * slope * x_train))
-    phi_0 = np.angle(s)
-    return phi_0
+    # plt.show()
+    if not os.path.exists('output/fig3'):
+        os.makedirs('output/fig3')
+    plt.savefig(f'output/fig3/{param["mode"]}') 
 
-def get_Dist(slope, phi_train, x_train):
-    phi_0 = get_phi_0(slope, phi_train, x_train)
-    D = 2 * (1 - np.mean(np.cos(phi_train - 2 * np.pi * slope * x_train - phi_0)))
-    return D
-    
-def get_slope(phases_train, x_train):
-    sl = np.linspace(-0.5, 0.5, 10000)
-    D = []
-    for s in sl:
-         D.append(get_Dist(s, phases_train, x_train))
+def fig3A(ax, directory, duration, dt, param, plot_param):
 
-    slope = sl[np.argmin(D)]
-
-    # res = minimize_scalar(get_Dist, x0=x0, args=(phases_train, x_train), bounds=[-0.5, 0.5], method='bounded')
-    # slope = float(res.x)
-
-    return slope
-
-def correl(phases_train, x_train):
-    r_xs = pearsonr(np.sin(phases_train), x_train)[0]
-    r_xc = pearsonr(np.cos(phases_train), x_train)[0]
-    r_cs = pearsonr(np.sin(phases_train), np.cos(phases_train))[0]
-    # print(r_xs, r_xc, r_cs)
-    cor = ((r_xc**2 + r_xs**2 - 2*r_xc*r_xs*r_cs)/(1 - r_cs**2))**0.5
-    return cor
-
-def get_slr(V, f, vel, duration, dt):
-    sim_time = np.arange(0, duration, dt)
-
-    peaks, _ = signal.find_peaks(V, height=(20, 30))
-
-    t = sim_time[peaks]
-    ph = 2*np.pi*f*t*0.001
-    x = t*vel*0.001
-
-    sl = get_slope(ph, x)
-    r = correl(ph, x)
-    # print(sl, r)
-
-    return (sl, r)
-
-def get_data(directory, duration, dt, Vreset, param):
-    directory += f'/{param["name"]}'
-    files = os.listdir(directory)
-    files = [file for file in files if file[-4:] == 'hdf5']
-    p = []
-    r = []
-    sl = []
-    for name_file in files:
-        if (param['type'] == 1 and f'{param["name"]}_{param["num"]}' in name_file) or param['type'] == 0:
-            # print(name_file)
-            with h5py.File(f'{directory}/{name_file}', 'r') as hdf_file:
-                f = hdf_file.attrs['theta_freq']
-                vel = hdf_file.attrs['animal_velosity']
-                V = hdf_file['V'][:]
-                # teor_spike_rate = hdf_file['teor_spike_rate'][:]
-                if param['type'] == 0:
-                    p.append(hdf_file.attrs[param['name']])
-                elif param['type'] == 1:
-                    s = name_file.split('_')
-                    if s[0] == 'W':
-                        name = 'Weights'
-                    elif s[0] == 'S':
-                        name = 'Sigmas'
-                    elif s[0] == 'C':
-                        name = 'Centers'
-                    num = param['num']
-                    p.append(hdf_file[name][num])
-
-            sl_, r_ = get_slr(V, f, vel, duration, dt, Vreset)
-            sl.append(np.rad2deg(sl_))
-            r.append(r_)
-
-    return p, r, sl
-            
-def make_folders(directory):
-    param = ['W', 'S', 'C', 'animal_velosity', 'theta_freq']
-    files = os.listdir(directory)
-    # print(files)
-    for p in param:
-        if p not in files:
-            os.mkdir(f'{directory}/{p}')
-    for file in files:
-        for p in param:
-            if p in file:
-                shutil.move(f'{directory}/{file}', f'{directory}/{p}')
-
-def fig3A(ax, directory, duration, dt, Vreset, param, plot_param):
-
-    p, r, sl = get_data(directory, duration, dt, Vreset, param)   
+    p, r, sl = get_data(directory, duration, dt, param)   
 
     if param['mode'] == 'r':
         ax.scatter(p, r, s=5)
@@ -381,10 +311,13 @@ def fig4(directory):
     param = {'mode': '', 'name': 'C', 'num': 0}
     plot_param = {'x': '', 'title': '', 'y': ''}
     name = ['animal_velosity', 'theta_freq', 'R_place_cell', 'precession_slope', 'sigma_place_field']
-    x = {'animal_velosity': 'v, cm/c', 'theta_freq': '$\omega_{\\theta}, Hz$', 'R_place_cell': 'R, cm', 'sigma_place_field': '\sigma_{place field}, cm', 'precession_slope': 'sl_{teor}, ^{\circ}/cm'}
+    x = {'animal_velosity': 'v, cm/c', 'theta_freq': '$\omega_{\\theta}, Hz$', 'R_place_cell': 'R, cm', 'sigma_place_field': '$\sigma_{place field}, cm$', 'precession_slope': '$sl_{teor}, ^{\circ}/cm$'}
     y = {'C': 'Center, cm', 'S': 'Sigma, cm', 'W': 'Weight, 1'}
 
     # name = name[1]
+    if not os.path.exists('output/fig4'):
+        os.makedirs('output/fig4') 
+
     for tmp1 in name:
         fig = plt.figure(figsize=(19, 9))
         # print(tmp)
@@ -407,7 +340,7 @@ def fig4(directory):
 
         plt.subplots_adjust(wspace=0.45, hspace=0.5)
         plt.tight_layout()
-        plt.savefig(f'output/{tmp1}')
+        plt.savefig(f'output/fig4/{tmp1}')
         # plt.show()
     
 
@@ -448,7 +381,11 @@ def fig4A(ax, directory, files, param, plot_param):
     return ax    
 
 def fig2_for_exp_4():
-    directory = './output'
+    '''
+    directory = multipal_optimization
+    creates fig2 for all experiments 4 data
+    '''
+    directory = './output/multipal_optimization'
 
     files = os.listdir(directory)
     files = [file for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5']
@@ -462,9 +399,11 @@ def fig2_for_exp_4():
     
 def main():
     # directory = 'phase_precession_results/output'
-    # directory = 'output/research_default_optimization'
+    directory = 'output/research_default_optimization'
     # directory = 'output/multipal_optimization'
 
+    # fig2_for_exp_4()
+    # fig3(directory)
     fig2_for_exp_4()
 
     # directory = 'output'
