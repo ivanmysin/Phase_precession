@@ -4,7 +4,6 @@ matplotlib.use('qt5agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from phase_precession_v5 import get_teor_spike_rate, r2kappa
 import scipy.signal as signal
 from scipy.signal import hilbert, filtfilt
 from scipy.optimize import minimize_scalar
@@ -96,11 +95,7 @@ def fig2B(ax, name_file, duration, dt):
 
     with h5py.File(f'{name_file}', 'r') as hdf_file:
         spike_rate = hdf_file['spike_rate'][:]
-        precession_slope = hdf_file.attrs['precession_slope']
         theta_freq = hdf_file.attrs['theta_freq']
-        R_place_cell = hdf_file.attrs['R_place_cell']
-        animal_velosity = hdf_file.attrs['animal_velosity']
-        sigma_place_field = hdf_file.attrs['sigma_place_field']
         teor_spike_rate = hdf_file['teor_spike_rate'][:]
         V = hdf_file['V'][:]
     sim_time = np.linspace(-0.5 * duration, 0.5 * duration, V.size)
@@ -119,6 +114,7 @@ def fig2B(ax, name_file, duration, dt):
     ax.plot(sim_time, cos_ref, linestyle = '--', linewidth=0.5)
     ax.scatter(sim_time[index_teor], cos_ref[index_teor])
     ax.scatter(sim_time[firing_idxs], cos_ref[firing_idxs])
+    # ax.scatter(sim_time[index_exp], cos_ref[index_exp])
 
     ax.legend(loc='upper right')
     ax.set_title('B', loc='left')
@@ -225,7 +221,7 @@ def fig2D(ax, name_file, duration, dt, param):
 
     return ax
 
-def fig3(directory):
+def fig3(directory, param_local):
 
     duration = 3000
     dt = 0.1
@@ -233,7 +229,7 @@ def fig3(directory):
     fig = plt.figure(figsize=(19,9))
     # ax1 = fig.add_subplot(84)
 
-    param = {'mode': 'sl', 'type': 1, 'name': 'C', 'num': 0}
+    param = {'mode': param_local['mode'], 'type': 1, 'name': 'C', 'num': 0}
     plot_param = {'x': '', 'title': ''}
     name = ['C', 'S', 'W', 'animal_velosity', 'theta_freq']
     x = {'C': 'Center, cm', 'S': 'Sigma, cm', 'W': 'Weight, 1', 'animal_velosity': 'v, cm/c', 'theta_freq': '$\omega_{\\theta}, Hz$'}
@@ -398,30 +394,55 @@ def fig2_for_exp_4():
         i += 1
     
 def main():
-    # directory = 'phase_precession_results/output'
-    directory = 'output/research_default_optimization'
-    # directory = 'output/multipal_optimization'
+    ################
+    # create fig2 for experement
+    # create a folder 'output/fig2' if it doesn't exist
+    # 
+    # name_file = 'path/name_file'
+    # param_local = {'num': 0}
+    # fig2(name_file, param_local)
 
-    # fig2_for_exp_4()
-    # fig3(directory)
-    fig2_for_exp_4()
+    ################
+    # create fig3 for experement 3:
+    # 2 mode (param_local['mode']) : 'sl' - precession slope
+    #         'r' - correlation (circular-linear)
+    # create a folder 'output/fig3' if it doesn't exist
+    # path = output/research_default_optimization
+    # 
+    # param_local = {'mode': ''}
+    # param_local['mode'] = 'r'
+    # directory = 'output/research_default_optimization'
+    # fig3(directory, param_local)
 
-    # directory = 'output'
-    # files = os.listdir(directory)
-    # # print(files)
-    # images = [x for x in files if x[-5:] == '.hdf5']
-    # print(*enumerate(images))
-    # N = int(input('num: '))
-    # name_file = f'{directory}/{images[N][:-5]}'
-    # print(name_file)
-    # s = input('key: ')
-    # name_file = ''
-
-    # fig4(directory)
+    ################
+    # sorts files into folders for experement 3
+    # (output files are in the same folder)
+    # folders:
+    #       W, S, C, animal_velosity, theta_freq
+    # path = output/research_default_optimization
+    # 
+    # directory = 'output/research_default_optimization'
     # make_folders(directory)
-    # fig2(name_file)
 
+    ################
+    # create fig4 for experement 4
+    # create a folder 'output/fig4' if it doesn't exist
+    # path = output/multipal_optimization
+    # 
+    # directory = 'output/multipal_optimization'
     # fig4(directory)
+
+    ################
+    # create fig2 for all experement 4
+    # create a folder 'output/fig2' if it doesn't exist
+    # name figure = {experiment number}.png
+    # path = output/multipal_optimization
+    # 
+    # fig2_for_exp_4()
+
+
+
+
 
 
 
