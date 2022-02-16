@@ -26,22 +26,6 @@ def inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq):
     out[1] = ddg
     return out
 
-# @jit(nopython=True)
-def g_conv(dt, tau_decay, tau_rise, kappa, sim_time, phi_0, theta_freq):
-    tkernel = np.arange(-100, 100, dt)
-    kernel = np.zeros_like(tkernel)
-    pos_t = np.s_[tkernel.size//2+1:]
-    # print(dt, tau_decay, tau_rise, kappa, sim_time, phi_0)
-    kernel[pos_t] = np.exp(-tkernel[pos_t] / tau_decay) - np.exp(-tkernel[pos_t] / tau_rise)
-    # plt.plot(tkernel, kernel)
-    # plt.show()
-    # alpha = sim_time*theta_freq
-    g = np.exp(kappa * np.cos(2*np.pi*sim_time*theta_freq*0.001  - phi_0) )
-    g = np.convolve(g, kernel, mode='same')
-    g = g / np.max(g)
-
-    return g
-
 
 
 # @jit(nopython=True)
@@ -174,6 +158,9 @@ def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
 
     return spike_rate, Vsoma
 
+
+
+
 @jit(nopython=True)
 def get_teor_spike_rate(t, slope, theta_freq, kappa, sigma=0.15, center=5):
     # t = 0.001 * t # ms to sec
@@ -192,6 +179,7 @@ def r2kappa(R):
         return 1/(3*R - 4*R**2 + R**3)
     else:
         return -0.4 + 1.39*R + 0.43/(1 - R)
+
 
 #@jit(nopython=True)
 def loss(X, teor_spike_rate, g_syn, sim_time, Erev, parzen_window, issaveV):
@@ -212,40 +200,10 @@ def loss(X, teor_spike_rate, g_syn, sim_time, Erev, parzen_window, issaveV):
     spike_rate, tmp = run_model(g_syn_wcs, sim_time, Erev, parzen_window, issaveV)
     L = np.mean( np.log( (teor_spike_rate+1)/(spike_rate+1) )**2 )
     return L
-
-def get_g(dt, sim_time, theta_freq, duration, output_path):
-    conductance_file = output_path + "conductances.hdf5"
-    datafile = "inputs_data.csv"
-    ###############################################
-    data = pd.read_csv(datafile, header=0, comment="#", index_col=0)
-    data.loc["phi"]  = np.deg2rad(data.loc["phi"])
-    data.loc["kappa"] = [ r2kappa(r) for r in data.loc["R"] ]
-    g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
-    Erev = np.zeros( len(data.columns), dtype=np.float64)
-    n_pops = len(data.columns)
-
-    print("integrate synaptic coductances")
-    with h5py.File(conductance_file, "w") as hdf_file:
-        hdf_file.attrs["dt"] = dt
-        hdf_file.attrs["duration"] = duration
-        for inp_idx, input_name in enumerate(data.columns):
-            # args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
-            # sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
-            # g = sol.sol(sim_time)[0]
-            # g *= 1.0 / np.max(g)
-            # g_syn[:, inp_idx] = g
-            g = g_conv(dt, data.loc["tau_decay"][input_name], data.loc["tau_rise"][input_name], data.loc["kappa"][input_name], sim_time, data.loc["phi"][input_name], theta_freq)
-            g_syn[:, inp_idx] = g
-            Erev[inp_idx] = data.loc["E"][input_name]
-
-            hdf_file.create_dataset(input_name, data=g)
-
-    return Erev, g_syn, n_pops
-
 ##################################################################
 def main(num, param):
     print('start optimization')
-    ##############################################################
+    ###################################################################
     ### Параметры для симуляции
     duration = 3000 # ms
     dt = 0.1        # ms
@@ -259,6 +217,11 @@ def main(num, param):
     ca3_center = place_field_center + 200 #
     ec3_center = place_field_center - 200 #
     
+    output_path = "./output/"
+    datafile = "inputs_data.csv"
+    conductance_file = output_path + "conductances.hdf5"
+    ###################################################################
+    
     ### Делаем предвычисления
     sim_time = np.arange(0, duration, dt)
     sim_time = 0.1 * np.ceil(10 * sim_time)
@@ -266,18 +229,46 @@ def main(num, param):
     kappa_place_cell = r2kappa(R_place_cell)
     sigma_place_field = 1000 * sigma_place_field / animal_velosity # recalculate to ms
     
-    teor_spike_rate = get_teor_spike_rate(sim_time, precession_slope, theta_freq, kappa_place_cell, sigma=sigma_place_field, center=place_field_center)
+    teor_spike_rate = get_teor_spike_rate(sim_time, precession_slope, theta_freq, kappa_place_cell,  sigma=sigma_place_field, center=place_field_center)
 
-    output_path = "./output/"
-    Erev, g_syn, n_pops = get_g(dt, sim_time, theta_freq, duration, output_path)
 
+    data = pd.read_csv(datafile, header=0, comment="#", index_col=0)
+    data.loc["phi"]  = np.deg2rad(data.loc["phi"])
+    data.loc["kappa"] = [ r2kappa(r) for r in data.loc["R"] ]
     parzen_window = parzen(1001) # parzen(401) # parzen(701)
+    ####################################################################
+    g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
+    Erev = np.zeros( len(data.columns), dtype=np.float64)
+    # inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq)
+    print("integrate synaptic coductances")
 
+    with h5py.File(conductance_file, "w") as hdf_file:
+        hdf_file.attrs["dt"] = dt
+        hdf_file.attrs["duration"] = duration
+        for inp_idx, input_name in enumerate(data.columns):
+            args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
+            sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
+            g = sol.sol(sim_time)[0]
+            g *= 1.0 / np.max(g) #0.1 for LIF !!!!!!!!
+            g_syn[:, inp_idx] = g
+            Erev[inp_idx] = data.loc["E"][input_name]
+    
+            hdf_file.create_dataset(input_name, data=g)
+
+    # with h5py.File(conductance_file, "r") as hdf_file:
+    #      for inp_idx, input_name in enumerate(data.columns):
+    #         g_syn[:, inp_idx] = hdf_file[input_name][:]
+    #         Erev[inp_idx] = data.loc["E"][input_name]
+
+    n_pops = len(data.columns)
     X = np.zeros(n_pops*3, dtype=np.float64)
     
     W = 0.1*np.ones(n_pops, dtype=np.float64)
     W[0] = 0.5
     W[1] = 0.5
+
+
+
 
     centers = np.zeros_like(W) + place_field_center
     centers[0] = ca3_center
@@ -338,6 +329,8 @@ def main(num, param):
     C = X[1::3]
     S = X[2::3]
     
+
+    
     # взвешивание и центрирование гауссианой
     for idx in range(n_pops):
         g_syn_wcs[:, idx] *= W[idx] * np.exp(-0.5 * ((C[idx] - sim_time) / S[idx])**2)
@@ -371,6 +364,7 @@ def main(num, param):
             hdf_file.attrs[name] = value
     
     plt.close('all')
+    return 
             
 def run_model_with_parameters(args):
     params, default_param, W, C, S, dt, duration, output_path, filename = args
@@ -380,9 +374,24 @@ def run_model_with_parameters(args):
     C = C * default_param['animal_velosity']/params['animal_velosity'] + 0.5*duration
     S = S * default_param['animal_velosity']/params['animal_velosity']
 
-    Erev, g_syn, _ = get_g(dt, sim_time, theta_freq, duration, output_path)
-
+    datafile = "inputs_data.csv"
+    data = pd.read_csv(datafile, header=0, comment="#", index_col=0)
+    data.loc["phi"]  = np.deg2rad(data.loc["phi"])
+    data.loc["kappa"] = [ r2kappa(r) for r in data.loc["R"] ]
     parzen_window = parzen(15)
+    g_syn = np.zeros((sim_time.size, len(data.columns)), dtype=np.float64)
+    Erev = np.zeros( len(data.columns), dtype=np.float64)
+
+    theta_freq = params['theta_freq']
+
+    # взвешивание и центрирование гауссианой
+    for inp_idx, input_name in enumerate(data.columns):
+        args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
+        sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
+        g = sol.sol(sim_time)[0]
+        g *= 1.0 / np.max(g)
+        g_syn[:, inp_idx] = g
+        Erev[inp_idx] = data.loc["E"][input_name]
 
     g_syn_wcs = g_syn
     for idx in range(W.size):
@@ -471,6 +480,10 @@ if __name__ == '__main__':
     #             run_model_with_parameters(default_param, default_param, Ws, Cs, Ss, dt, duration, output_path, filename)
 
 
+
+
+
+
     # for i in range(1, 100):
     #
     #     param = copy(default_param)
@@ -490,3 +503,7 @@ if __name__ == '__main__':
     #     param['theta_freq'] = theta_freq[n[5]] # !!!! Исследование тета-частоты не проводилось !!!
     #     name = f'experiment_{i}'
     #     main(name, param)
+
+
+
+
