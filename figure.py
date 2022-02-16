@@ -448,7 +448,7 @@ def fig4A(ax, directory, files, param, plot_param):
     return ax    
 
 def fig2_for_exp_4():
-    directory = './output'
+    directory = './output/very_nice/'
 
     files = os.listdir(directory)
     files = [file for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5']

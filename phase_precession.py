@@ -261,7 +261,6 @@ def main(num, param):
     #         Erev[inp_idx] = data.loc["E"][input_name]
 
     n_pops = len(data.columns)
-    X = np.zeros(n_pops*3, dtype=np.float64)
     
     W = 0.1*np.ones(n_pops, dtype=np.float64)
     W[0] = 0.5
@@ -283,14 +282,19 @@ def main(num, param):
     # centers[8] += 0 # bis
 
     sigmas = np.zeros_like(centers) + sigma_place_field
-    X[0::3] = W
-    X[1::3] = centers
-    X[2::3] = sigmas
+
+    if param["use_x0"]:
+        X = np.zeros(n_pops * 3, dtype=np.float64)
+        X[0::3] = W
+        X[1::3] = centers
+        X[2::3] = sigmas
+    else:
+        X = None
 
     print("start simulation")
     
     bounds = []
-    for bnd_idx in range(X.size):
+    for bnd_idx in range(n_pops * 3):
         if bnd_idx%3 == 0:
             bounds.append([0, 1])
         elif bnd_idx%3 == 1:
@@ -311,9 +315,8 @@ def main(num, param):
     loss_args = (teor_spike_rate, g_syn, sim_time, Erev, parzen_window, False)
 
     timer = time.time()
-    #mutation = (0.5, 1.9)
     sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=1.7, \
-                                 mutation=1.7, args=loss_args, bounds=bounds,  maxiter=100, \
+                                 mutation=1.2, args=loss_args, bounds=bounds,  maxiter=1000, \
                                  workers=-1, updating='deferred', disp=True, \
                                  strategy='best2bin')
 
@@ -425,7 +428,7 @@ if __name__ == '__main__':
 
     # default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 3, 'theta_freq': 8}
     default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 4,
-                     'theta_freq': 8}
+                     'theta_freq': 8, "use_x0":True}
 
     lenth = [len(precession_slope), len(animal_velosity), \
             len(R_place_cell), len(sigma_place_field), \
@@ -433,7 +436,7 @@ if __name__ == '__main__':
     input_params = []
 
     # optimize to the default params
-    main("test_experiment", default_param)
+    # main("test_experiment", default_param)
 
     # Параметры модели: частота тета-ритма, скорость животного, размера поля места (сигма), веса входов, их центры и сигмы.
     # run optimizeed model with different params
@@ -483,26 +486,18 @@ if __name__ == '__main__':
 
 
 
+    ##############################################################################
+    ### Experiments for research parametres of spike rate function
+    for i in range(1, 10):
+        param = copy(default_param)
+        param['precession_slope'] = np.random.uniform(precession_slope[0], precession_slope[-1]) # precession_slope
+        param['sigma_place_field'] = np.random.uniform(sigma_place_field[0], sigma_place_field[-1])
+        # param['animal_velosity'] = animal_velosity[n[2]]
+        # param['R_place_cell'] = R_place_cell[n[3]]
 
-    # for i in range(1, 100):
-    #
-    #     param = copy(default_param)
-    #     flag = False
-    #     while not flag:
-    #         n = np.ndarray.tolist(randint(lenth))
-    #         if n not in input_params:
-    #             flag = True
-    #     n.insert(0, i)
-    #     # print(n)
-    #     input_params.append(n)
-    #     # print(input_params)
-    #     param['precession_slope'] = precession_slope[n[1]]
-    #     param['animal_velosity'] = animal_velosity[n[2]]
-    #     param['R_place_cell'] = R_place_cell[n[3]]
-    #     param['sigma_place_field'] = sigma_place_field[n[4]]
-    #     param['theta_freq'] = theta_freq[n[5]] # !!!! Исследование тета-частоты не проводилось !!!
-    #     name = f'experiment_{i}'
-    #     main(name, param)
+        name = f'experiment_{i}'
+        param["use_x0"] = False
+        main(name, param)
 
 
 
