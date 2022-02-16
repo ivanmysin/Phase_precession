@@ -26,22 +26,6 @@ def inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq):
     out[1] = ddg
     return out
 
-# @jit(nopython=True)
-def g_conv(dt, tau_decay, tau_rise, kappa, sim_time, phi_0, theta_freq):
-    tkernel = np.arange(-100, 100, dt)
-    kernel = np.zeros_like(tkernel)
-    pos_t = np.s_[tkernel.size//2+1:]
-    # print(dt, tau_decay, tau_rise, kappa, sim_time, phi_0)
-    kernel[pos_t] = np.exp(-tkernel[pos_t] / tau_decay) - np.exp(-tkernel[pos_t] / tau_rise)
-    # plt.plot(tkernel, kernel)
-    # plt.show()
-    # alpha = sim_time*theta_freq
-    g = np.exp(kappa * np.cos(2*np.pi*sim_time*theta_freq*0.001  - phi_0) )
-    g = np.convolve(g, kernel, mode='same')
-    g = g / np.max(g)
-
-    return g
-
 
 
 # @jit(nopython=True)
@@ -262,13 +246,10 @@ def main(num, param):
         hdf_file.attrs["dt"] = dt
         hdf_file.attrs["duration"] = duration
         for inp_idx, input_name in enumerate(data.columns):
-            # args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
-            # sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
-            # g = sol.sol(sim_time)[0]
-            # g *= 1.0 / np.max(g) #0.1 for LIF !!!!!!!!
-            # phi_0 = 0.5*np.pi
-            # dt, tau_decay, tau_rise, kappa, sim_time, phi_0
-            g = g_conv(dt, data.loc["tau_decay"][input_name], data.loc["tau_rise"][input_name], data.loc["kappa"][input_name], sim_time, data.loc["phi"][input_name], theta_freq)
+            args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
+            sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
+            g = sol.sol(sim_time)[0]
+            g *= 1.0 / np.max(g) #0.1 for LIF !!!!!!!!
             g_syn[:, inp_idx] = g
             Erev[inp_idx] = data.loc["E"][input_name]
     
@@ -279,9 +260,8 @@ def main(num, param):
     #         g_syn[:, inp_idx] = hdf_file[input_name][:]
     #         Erev[inp_idx] = data.loc["E"][input_name]
 
-
-
     n_pops = len(data.columns)
+    X = np.zeros(n_pops*3, dtype=np.float64)
     
     W = 0.1*np.ones(n_pops, dtype=np.float64)
     W[0] = 0.5
@@ -303,19 +283,14 @@ def main(num, param):
     # centers[8] += 0 # bis
 
     sigmas = np.zeros_like(centers) + sigma_place_field
-
-    if param["use_x0"]:
-        X = np.zeros(n_pops * 3, dtype=np.float64)
-        X[0::3] = W
-        X[1::3] = centers
-        X[2::3] = sigmas
-    else:
-        X = None
+    X[0::3] = W
+    X[1::3] = centers
+    X[2::3] = sigmas
 
     print("start simulation")
     
     bounds = []
-    for bnd_idx in range(n_pops * 3):
+    for bnd_idx in range(X.size):
         if bnd_idx%3 == 0:
             bounds.append([0, 1])
         elif bnd_idx%3 == 1:
@@ -336,8 +311,9 @@ def main(num, param):
     loss_args = (teor_spike_rate, g_syn, sim_time, Erev, parzen_window, False)
 
     timer = time.time()
+    #mutation = (0.5, 1.9)
     sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=1.7, \
-                                 mutation=1.2, args=loss_args, bounds=bounds,  maxiter=1000, \
+                                 mutation=1.7, args=loss_args, bounds=bounds,  maxiter=100, \
                                  workers=-1, updating='deferred', disp=True, \
                                  strategy='best2bin')
 
@@ -449,7 +425,7 @@ if __name__ == '__main__':
 
     # default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 3, 'theta_freq': 8}
     default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 4,
-                     'theta_freq': 8, "use_x0":True}
+                     'theta_freq': 8}
 
     lenth = [len(precession_slope), len(animal_velosity), \
             len(R_place_cell), len(sigma_place_field), \
@@ -457,7 +433,7 @@ if __name__ == '__main__':
     input_params = []
 
     # optimize to the default params
-    # main("test_experiment", default_param)
+    main("test_experiment", default_param)
 
     # Параметры модели: частота тета-ритма, скорость животного, размера поля места (сигма), веса входов, их центры и сигмы.
     # run optimizeed model with different params
@@ -507,18 +483,26 @@ if __name__ == '__main__':
 
 
 
-    ##############################################################################
-    ### Experiments for research parametres of spike rate function
-    for i in range(1, 10):
-        param = copy(default_param)
-        param['precession_slope'] = np.random.uniform(precession_slope[0], precession_slope[-1]) # precession_slope
-        param['sigma_place_field'] = np.random.uniform(sigma_place_field[0], sigma_place_field[-1])
-        # param['animal_velosity'] = animal_velosity[n[2]]
-        # param['R_place_cell'] = R_place_cell[n[3]]
 
-        name = f'experiment_{i}'
-        param["use_x0"] = False
-        main(name, param)
+    # for i in range(1, 100):
+    #
+    #     param = copy(default_param)
+    #     flag = False
+    #     while not flag:
+    #         n = np.ndarray.tolist(randint(lenth))
+    #         if n not in input_params:
+    #             flag = True
+    #     n.insert(0, i)
+    #     # print(n)
+    #     input_params.append(n)
+    #     # print(input_params)
+    #     param['precession_slope'] = precession_slope[n[1]]
+    #     param['animal_velosity'] = animal_velosity[n[2]]
+    #     param['R_place_cell'] = R_place_cell[n[3]]
+    #     param['sigma_place_field'] = sigma_place_field[n[4]]
+    #     param['theta_freq'] = theta_freq[n[5]] # !!!! Исследование тета-частоты не проводилось !!!
+    #     name = f'experiment_{i}'
+    #     main(name, param)
 
 
 
