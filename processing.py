@@ -50,8 +50,9 @@ def get_slr(V, f, vel, duration, dt):
     sl = get_slope(ph, x)
     r = correl(ph, x)
     # print(sl, r)
+    phi_0 = get_phi_0(sl, ph, x)
 
-    return (sl, r)
+    return (sl, r, phi_0)
 
 def get_data(directory, duration, dt, param):
     directory += f'/{param["name"]}'
@@ -81,7 +82,7 @@ def get_data(directory, duration, dt, param):
                     num = param['num']
                     p.append(hdf_file[name][num])
 
-            sl_, r_ = get_slr(V, f, vel, duration, dt)
+            sl_, r_, _ = get_slr(V, f, vel, duration, dt)
             sl.append(np.rad2deg(sl_))
             r.append(r_)
 
@@ -103,6 +104,11 @@ def make_folders(directory):
         for p in param:
             if p in file:
                 shutil.move(f'{directory}/{file}', f'{directory}/{p}')
+
+# def ob(b, ph, x):
+    # f1 = lambda x: s
+#     s = np.array(list(map(f1, f)))
+#     return np.sum((s-t)**2)
 
 if __name__ == '__main__':
     pass

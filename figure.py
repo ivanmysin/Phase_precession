@@ -11,6 +11,7 @@ from scipy.signal.windows import parzen
 import os
 import shutil
 from processing import get_data, get_slr, make_folders
+from scipy.optimize import minimize
 
 neuron_colors = {
         "ca3" : (1.0, 0.0, 0.0), # red
@@ -63,7 +64,8 @@ def fig2(name_file, param_local):
     if not os.path.exists('output/fig2'):
         os.makedirs('output/fig2') 
     plt.savefig(f'output/fig2/{param_local["num"]}')
-    # plt.show()
+    if param_local['flag']:
+        plt.show()
     # fig.savefig(f"{name_file}.png")
 
 def fig2A(ax, name_file, duration, dt):
@@ -140,10 +142,13 @@ def fig2C(ax, name_file, duration, dt):
     animal_position = firing*animal_velosity*0.001
     phases_firing = 2*np.pi*theta_freq*firing*0.001
 
-    sl, r = get_slr(V, theta_freq, animal_velosity, duration, dt)
+    sl, r, phi_0 = get_slr(V, theta_freq, animal_velosity, duration, dt)
     phases_firing = np.rad2deg(phases_firing%(2*np.pi))
 
+    # # print(phi_0)
 
+    # solution = minimize(ob, 180, method='SLSQP')
+    
 
     ax.scatter(animal_position, phases_firing, s=5, label=f'slope = {sl:0.1f}'+'$^{\circ}/cm$;'+f' r = {r:0.5f}')
     # ax.set_label('Label via method')
@@ -265,7 +270,8 @@ def fig3(directory, param_local):
     
     plt.subplots_adjust(wspace=0.45, hspace=0.5)
     plt.tight_layout()
-    # plt.show()
+    if param_local['flag']:
+        plt.show()
     if not os.path.exists('output/fig3'):
         os.makedirs('output/fig3')
     plt.savefig(f'output/fig3/{param["mode"]}') 
@@ -374,7 +380,7 @@ def fig4A(ax, directory, files, param, plot_param):
     # ax.legend(loc='upper left')
     ax.grid()
 
-    return ax    
+    return ax  
 
 def fig2_for_exp_4():
     '''
@@ -397,10 +403,12 @@ def main():
     ################
     # create fig2 for experement
     # create a folder 'output/fig2' if it doesn't exist
-    # 
     # name_file = 'path/name_file'
-    # param_local = {'num': 0}
-    # fig2(name_file, param_local)
+    # 
+    name_file = 'output/default_experiment.hdf5'
+    param_local = {'num': 0, '': True}
+    param_local['flag'] = True
+    fig2(name_file, param_local)
 
     ################
     # create fig3 for experement 3:
@@ -409,7 +417,8 @@ def main():
     # create a folder 'output/fig3' if it doesn't exist
     # path = output/research_default_optimization
     # 
-    # param_local = {'mode': ''}
+    # param_local = {'mode': '', 'flag': True}
+    # param_local['flag'] = False
     # param_local['mode'] = 'r'
     # directory = 'output/research_default_optimization'
     # fig3(directory, param_local)
@@ -439,11 +448,6 @@ def main():
     # path = output/multipal_optimization
     # 
     # fig2_for_exp_4()
-
-
-
-
-
 
 
 if __name__ == '__main__':
