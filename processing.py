@@ -38,14 +38,14 @@ def correl(phases_train, x_train):
     cor = ((r_xc**2 + r_xs**2 - 2*r_xc*r_xs*r_cs)/(1 - r_cs**2))**0.5
     return cor
 
-def get_slr(ph, x):
-    # sim_time = np.arange(0, duration, dt)
+def get_slr(V, f, vel, duration, dt):
+    sim_time = np.arange(0, duration, dt)
 
-    # peaks, _ = signal.find_peaks(V, height=(20, 30))
+    peaks, _ = signal.find_peaks(V, height=(20, 30))
 
-    # t = sim_time[peaks]
-    # ph = 2*np.pi*f*t*0.001
-    # x = t*vel*0.001
+    t = sim_time[peaks]
+    ph = 2*np.pi*f*t*0.001
+    x = t*vel*0.001
 
     sl = get_slope(ph, x)
     r = correl(ph, x)
@@ -53,15 +53,6 @@ def get_slr(ph, x):
     phi_0 = get_phi_0(sl, ph, x)
 
     return (sl, r, phi_0)
-
-def make_for_slr(V, f, vel, duration, dt):
-    firing_idxs, _ = signal.find_peaks(V, height=-10)
-    sim_time = np.linspace(-0.5 * duration, 0.5 * duration, V.size)
-
-    firing = sim_time[firing_idxs]
-    animal_position_ = firing*vel*0.001
-    phases_firing_ = 2*np.pi*f*firing*0.001
-    return get_slr(phases_firing_, animal_position_)
 
 def get_data(directory, duration, dt, param):
     directory += f'/{param["name"]}'
@@ -91,7 +82,7 @@ def get_data(directory, duration, dt, param):
                     num = param['num']
                     p.append(hdf_file[name][num])
 
-            sl_, r_, _ = make_for_slr(V, f, vel, duration, dt)
+            sl_, r_, _ = get_slr(V, f, vel, duration, dt)
             sl.append(np.rad2deg(sl_))
             r.append(r_)
 

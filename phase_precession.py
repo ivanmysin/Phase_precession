@@ -26,6 +26,22 @@ def inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq):
     out[1] = ddg
     return out
 
+# @jit(nopython=True)
+def g_conv(dt, tau_decay, tau_rise, kappa, sim_time, phi_0, theta_freq):
+    tkernel = np.arange(-100, 100, dt)
+    kernel = np.zeros_like(tkernel)
+    pos_t = np.s_[tkernel.size//2+1:]
+    # print(dt, tau_decay, tau_rise, kappa, sim_time, phi_0)
+    kernel[pos_t] = np.exp(-tkernel[pos_t] / tau_decay) - np.exp(-tkernel[pos_t] / tau_rise)
+    # plt.plot(tkernel, kernel)
+    # plt.show()
+    # alpha = sim_time*theta_freq
+    g = np.exp(kappa * np.cos(2*np.pi*sim_time*theta_freq*0.001  - phi_0) )
+    g = np.convolve(g, kernel, mode='same')
+    g = g / np.max(g)
+
+    return g
+
 
 
 # @jit(nopython=True)
@@ -246,10 +262,13 @@ def main(num, param):
         hdf_file.attrs["dt"] = dt
         hdf_file.attrs["duration"] = duration
         for inp_idx, input_name in enumerate(data.columns):
-            args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
-            sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
-            g = sol.sol(sim_time)[0]
-            g *= 1.0 / np.max(g) #0.1 for LIF !!!!!!!!
+            # args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
+            # sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
+            # g = sol.sol(sim_time)[0]
+            # g *= 1.0 / np.max(g) #0.1 for LIF !!!!!!!!
+            # phi_0 = 0.5*np.pi
+            # dt, tau_decay, tau_rise, kappa, sim_time, phi_0
+            g = g_conv(dt, data.loc["tau_decay"][input_name], data.loc["tau_rise"][input_name], data.loc["kappa"][input_name], sim_time, data.loc["phi"][input_name], theta_freq)
             g_syn[:, inp_idx] = g
             Erev[inp_idx] = data.loc["E"][input_name]
     
@@ -259,6 +278,8 @@ def main(num, param):
     #      for inp_idx, input_name in enumerate(data.columns):
     #         g_syn[:, inp_idx] = hdf_file[input_name][:]
     #         Erev[inp_idx] = data.loc["E"][input_name]
+
+
 
     n_pops = len(data.columns)
     
