@@ -46,7 +46,7 @@ def fig2(name_file, param_local):
     ax5 = fig.add_subplot(5,2,6)
     fig2A(ax1, name_file, duration, dt)
     fig2B(ax3, name_file, duration, dt)
-    fig2C(ax2, name_file, duration, dt)
+    fig2C(ax2, name_file, duration, dt, {'all_folder': param_local['all_folder']})
     param = {'mode': 'inhibitory', 'num': 0}
     fig2D(ax5, name_file, duration, dt, param)
     param['mode'] = 'excitatory'
@@ -126,32 +126,51 @@ def fig2B(ax, name_file, duration, dt):
 
     return ax
 
-def fig2C(ax, name_file, duration, dt):
 
+def fig2C(ax, name_file, duration, dt, local_param):
+    animal_position = []
+    phases_firing = []
+    
+    if local_param['all_folder'] == 'None':
+        files = [name_file]
+    else:
+        files = os.listdir(local_param['all_folder'])
+        files = [f'{local_param["all_folder"]}/{file}' for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5']
+    # print(files)
+    for file in files:
+        with h5py.File(f'{file}', 'r') as hdf_file:
+            theta_freq = hdf_file.attrs['theta_freq']
+            V = hdf_file['V'][:]
+            animal_velosity = hdf_file.attrs['animal_velosity']
+            # print(type(V))
 
-    with h5py.File(f'{name_file}', 'r') as hdf_file:
-        theta_freq = hdf_file.attrs['theta_freq']
-        V = hdf_file['V'][:]
-        animal_velosity = hdf_file.attrs['animal_velosity']
+        firing_idxs, _ = signal.find_peaks(V, height=-10)
+        sim_time = np.linspace(-0.5 * duration, 0.5 * duration, V.size)
 
+        firing = sim_time[firing_idxs]
+        animal_position_ = firing*animal_velosity*0.001
+        phases_firing_ = 2*np.pi*theta_freq*firing*0.001
+        animal_position.extend(animal_position_)
+        phases_firing.extend(phases_firing_)
 
-    sim_time = np.linspace(-0.5 * duration, 0.5 * duration, V.size)
-    firing_idxs, _ = signal.find_peaks(V, height=-10)
+    # print(phases_firing, animal_position)
 
-    firing = sim_time[firing_idxs]
-    animal_position = firing*animal_velosity*0.001
-    phases_firing = 2*np.pi*theta_freq*firing*0.001
+    phases_firing, animal_position = np.array(phases_firing), np.array(animal_position)
+    sl, r, phi_0 = get_slr(phases_firing, animal_position)
 
-    sl, r, phi_0 = get_slr(V, theta_freq, animal_velosity, duration, dt)
     phases_firing = np.rad2deg(phases_firing%(2*np.pi))
+    p_1, _ = np.polyfit(animal_position, phases_firing, deg=1, cov=True)
+    # print(phi_0)
 
-    # # print(phi_0)
+    # p = np.poly1d([-np.rad2deg(sl), -np.rad2deg(phi_0)+180])
+    p = np.poly1d([-np.rad2deg(sl), p_1[1]])
 
     # solution = minimize(ob, 180, method='SLSQP')
     
 
-    ax.scatter(animal_position, phases_firing, s=5, label=f'slope = {sl:0.1f}'+'$^{\circ}/cm$;'+f' r = {r:0.5f}')
+    ax.scatter(animal_position, phases_firing, s=5, label=f'slope = {np.rad2deg(sl):0.1f}'+'$^{\circ}/cm$;'+f' r = {r:0.5f}')
     # ax.set_label('Label via method')
+    ax.plot(animal_position[phases_firing < 200], list(p(animal_position[phases_firing < 200])))
     ax.set_title('C', loc='left')
     position_start = -0.5*duration*0.001*animal_velosity
     ax.set(xlabel='animal position, cm', ylabel='$\Delta \\varphi, ^{\circ}$', xlim=[position_start, -position_start], ylim=[0, 360])
@@ -404,9 +423,12 @@ def main():
     # create fig2 for experement
     # create a folder 'output/fig2' if it doesn't exist
     # name_file = 'path/name_file'
+    # param_local['all_folder'] : 'directory' - use all files
+    #                             'None' - unused
+    # param_local['flag'] : show figure
     # 
     name_file = 'output/default_experiment.hdf5'
-    param_local = {'num': 0, '': True}
+    param_local = {'num': 0, 'flag': True, 'all_folder': 'None'}
     param_local['flag'] = True
     fig2(name_file, param_local)
 
@@ -414,6 +436,7 @@ def main():
     # create fig3 for experement 3:
     # 2 mode (param_local['mode']) : 'sl' - precession slope
     #         'r' - correlation (circular-linear)
+    # param_local['flag'] : show figure
     # create a folder 'output/fig3' if it doesn't exist
     # path = output/research_default_optimization
     # 

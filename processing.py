@@ -38,14 +38,14 @@ def correl(phases_train, x_train):
     cor = ((r_xc**2 + r_xs**2 - 2*r_xc*r_xs*r_cs)/(1 - r_cs**2))**0.5
     return cor
 
-def get_slr(V, f, vel, duration, dt):
-    sim_time = np.arange(0, duration, dt)
+def get_slr(ph, x):
+    # sim_time = np.arange(0, duration, dt)
 
-    peaks, _ = signal.find_peaks(V, height=(20, 30))
+    # peaks, _ = signal.find_peaks(V, height=(20, 30))
 
-    t = sim_time[peaks]
-    ph = 2*np.pi*f*t*0.001
-    x = t*vel*0.001
+    # t = sim_time[peaks]
+    # ph = 2*np.pi*f*t*0.001
+    # x = t*vel*0.001
 
     sl = get_slope(ph, x)
     r = correl(ph, x)
