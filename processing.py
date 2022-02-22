@@ -54,6 +54,15 @@ def get_slr(ph, x):
 
     return (sl, r, phi_0)
 
+def make_for_slr(V, f, vel, duration, dt):
+    firing_idxs, _ = signal.find_peaks(V, height=-10)
+    sim_time = np.linspace(-0.5 * duration, 0.5 * duration, V.size)
+
+    firing = sim_time[firing_idxs]
+    animal_position_ = firing*vel*0.001
+    phases_firing_ = 2*np.pi*f*firing*0.001
+    return get_slr(phases_firing_, animal_position_)
+
 def get_data(directory, duration, dt, param):
     directory += f'/{param["name"]}'
     files = os.listdir(directory)
@@ -82,7 +91,7 @@ def get_data(directory, duration, dt, param):
                     num = param['num']
                     p.append(hdf_file[name][num])
 
-            sl_, r_, _ = get_slr(V, f, vel, duration, dt)
+            sl_, r_, _ = make_for_slr(V, f, vel, duration, dt)
             sl.append(np.rad2deg(sl_))
             r.append(r_)
 
