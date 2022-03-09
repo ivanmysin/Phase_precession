@@ -174,5 +174,5 @@ def fig2D(ax, flag, name_file, duration, dt):
 
 
 if __name__ == '__main__':
-    name_file = 'output/default_experiment'
+    name_file = './output/tests/test_experiment_small_sigmas'   # 'output/default_experiment'
     fig2(name_file)

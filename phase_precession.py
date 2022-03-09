@@ -218,13 +218,13 @@ def main(num, param):
     ec3_center = place_field_center - 200 #
     
     output_path = "./output/"
-    datafile = "inputs_data.csv"
+    datafile = "inputs_data_test.csv"
     conductance_file = output_path + "conductances.hdf5"
     ###################################################################
     
     ### Делаем предвычисления
     sim_time = np.arange(0, duration, dt)
-    sim_time = 0.1 * np.ceil(10 * sim_time)
+    sim_time = np.around(sim_time, 2)
     precession_slope = animal_velosity * np.deg2rad(precession_slope)
     kappa_place_cell = r2kappa(R_place_cell)
     sigma_place_field = 1000 * sigma_place_field / animal_velosity # recalculate to ms
@@ -247,8 +247,9 @@ def main(num, param):
         hdf_file.attrs["duration"] = duration
         for inp_idx, input_name in enumerate(data.columns):
             args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
-            sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
-            g = sol.sol(sim_time)[0]
+            sol = solve_ivp(inegrate_g, t_span=[0, duration], t_eval=sim_time, y0=[0, 0], args=args, dense_output=True)
+            # g = sol.sol(sim_time)[0]
+            g = sol.y[0]
             g *= 1.0 / np.max(g) #0.1 for LIF !!!!!!!!
             g_syn[:, inp_idx] = g
             Erev[inp_idx] = data.loc["E"][input_name]
@@ -261,14 +262,10 @@ def main(num, param):
     #         Erev[inp_idx] = data.loc["E"][input_name]
 
     n_pops = len(data.columns)
-    X = np.zeros(n_pops*3, dtype=np.float64)
     
     W = 0.1*np.ones(n_pops, dtype=np.float64)
     W[0] = 0.5
     W[1] = 0.5
-
-
-
 
     centers = np.zeros_like(W) + place_field_center
     centers[0] = ca3_center
@@ -283,14 +280,19 @@ def main(num, param):
     # centers[8] += 0 # bis
 
     sigmas = np.zeros_like(centers) + sigma_place_field
-    X[0::3] = W
-    X[1::3] = centers
-    X[2::3] = sigmas
+
+    if param["use_x0"]:
+        X = np.zeros(n_pops * 3, dtype=np.float64)
+        X[0::3] = W
+        X[1::3] = centers
+        X[2::3] = sigmas
+    else:
+        X = None
 
     print("start simulation")
     
     bounds = []
-    for bnd_idx in range(X.size):
+    for bnd_idx in range(n_pops * 3):
         if bnd_idx%3 == 0:
             bounds.append([0, 1])
         elif bnd_idx%3 == 1:
@@ -299,11 +301,11 @@ def main(num, param):
             bounds.append([100, 15000])
     
     # Изменяем границы для параметров для СА3
-    bounds[0][0] = 0.01 # вес не менее 0,2
+    bounds[0][0] = 0.01 # вес не менее
     bounds[1][0] = place_field_center # центр входа от СА3 не ранее центра в СА1
     
     # Изменяем границы для параметров для EC3
-    bounds[3][0] = 0.01 # вес не менее 0,2
+    bounds[3][0] = 0.01 # вес не менее
     bounds[4][1] = place_field_center # центр входа от EC3 ранее центра в СА1
     
    
@@ -311,9 +313,10 @@ def main(num, param):
     loss_args = (teor_spike_rate, g_syn, sim_time, Erev, parzen_window, False)
 
     timer = time.time()
-    #mutation = (0.5, 1.9)
-    sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=1.7, \
-                                 mutation=1.7, args=loss_args, bounds=bounds,  maxiter=100, \
+    # recombination=1.7 # 0.5
+    # mutation=1.2,  # 0.1 - 0.2
+    sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=0.7, \
+                                 mutation=0.2, args=loss_args, bounds=bounds,  maxiter=100, \
                                  workers=-1, updating='deferred', disp=True, \
                                  strategy='best2bin')
 
@@ -387,8 +390,9 @@ def run_model_with_parameters(args):
     # взвешивание и центрирование гауссианой
     for inp_idx, input_name in enumerate(data.columns):
         args = (data.loc["tau_rise"][input_name], data.loc["tau_decay"][input_name], data.loc["phi"][input_name], data.loc["kappa"][input_name], theta_freq)
-        sol = solve_ivp(inegrate_g, t_span=[0, duration], y0=[0, 0], max_step=dt, args=args, dense_output=True)
-        g = sol.sol(sim_time)[0]
+        sol = solve_ivp(inegrate_g, t_span=[0, duration], t_eval=sim_time, y0=[0, 0], args=args, dense_output=True)
+        #g = sol.sol(sim_time)[0]
+        g = sol.y[0]
         g *= 1.0 / np.max(g)
         g_syn[:, inp_idx] = g
         Erev[inp_idx] = data.loc["E"][input_name]
@@ -415,6 +419,23 @@ def run_model_with_parameters(args):
         for name, value in params.items():
             hdf_file.attrs[name] = value
 
+
+def multipal_run(output_path, W, C, S):
+    # Параметры модели: частота тета-ритма, скорость животного, размера поля места (сигма), веса входов, их центры и сигмы.
+    # run optimizeed model with different params
+    dt = 0.1
+    duration = 10000
+    run_model_args = []
+    for param_name in ['theta_freq', 'animal_velosity']:
+         for param_var in globals()[param_name]:
+             param = copy(default_param)
+             param[param_name] = param_var
+             filename = param_name + str(param_var)
+             run_model_args.append((param, default_param, W, C, S, dt, duration, output_path, filename) )
+
+    with Pool(processes=4) as p:
+        p.map( run_model_with_parameters, run_model_args)
+
 if __name__ == '__main__':
     precession_slope = [2.5, 3.5, 5, 6, 7]
     animal_velosity = [10, 15, 20, 25, 30]
@@ -423,85 +444,88 @@ if __name__ == '__main__':
     theta_freq = [4, 6, 8, 10, 12]
 
 
-    # default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 3, 'theta_freq': 8}
     default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 4,
-                     'theta_freq': 8}
-
-    lenth = [len(precession_slope), len(animal_velosity), \
-            len(R_place_cell), len(sigma_place_field), \
-            len(theta_freq)]
-    input_params = []
+                     'theta_freq': 8, "use_x0": True}
 
     # optimize to the default params
-    main("test_experiment", default_param)
+    # main("test5", default_param)
 
-    # Параметры модели: частота тета-ритма, скорость животного, размера поля места (сигма), веса входов, их центры и сигмы.
-    # run optimizeed model with different params
-    # dt = 0.1
-    # duration = 10000
-    # output_path = './output/default_optimization/'
-    # # conductance_file = './output/conductances.hdf5'
-    # with h5py.File('./output/default_experiment.hdf5', "r") as hdf_file:
-    #     W = hdf_file['Weights'][:]
-    #     C = hdf_file['Centers'][:]
-    #     S = hdf_file['Sigmas'][:]
-    #
-    # run_model_args = []
-    # for param_name in ['theta_freq', 'animal_velosity']:
-    #      for param_var in globals()[param_name]:
-    #          param = copy(default_param)
-    #          param[param_name] = param_var
-    #          filename = param_name + str(param_var)
-    #          #run_model_with_parameters(param, default_param, W, C, S, dt, duration, output_path, filename)
-    #          run_model_args.append((param, default_param, W, C, S, dt, duration, output_path, filename) )
-    #
-    # with Pool(processes=4) as p:
-    #     p.map( run_model_with_parameters, run_model_args)
+    output_path = './output/tests/research/' # './output/default_optimization/'
+    optimized_file = './output/tests/test_experiment_small_sigmas.hdf5' #  './output/default_optimization/default_experiment.hdf5'
 
+    with h5py.File(optimized_file, "r") as hdf_file:
+        W = hdf_file['Weights'][:]
+        C = hdf_file['Centers'][:]
+        S = hdf_file['Sigmas'][:]
+    multipal_run(output_path, W, C, S)
 
 
     #####################################################################################
-    # for param_name in ['W', 'C', 'S']:
-    #     for p_idx, param_var in enumerate(globals()[param_name]):
-    #         param_range = np.linspace(0.8*param_var, 1.2*param_var, 10)
+    # Experiment for research the role of each optimized parameters
+    # datafile = "inputs_data.csv"
+    # data = pd.read_csv(datafile, header=0, comment="#", index_col=0)
     #
-    #         Ws = np.copy(W)
-    #         Cs = np.copy(C)
-    #         Ss = np.copy(S)
-    #         for idx, val in enumerate(param_range):
-    #             if param_name == 'W':
-    #                 Ws[p_idx] = val
-    #             elif param_name == 'C':
-    #                 Cs[p_idx] = val
-    #             elif param_name == 'S':
-    #                 Ss[p_idx] = val
-    #             filename = param_name + '_' + str(p_idx) + '_' + str(idx)
-    #             # print(param_name, param_var)
-    #             run_model_with_parameters(default_param, default_param, Ws, Cs, Ss, dt, duration, output_path, filename)
-
-
-
-
-
-
-    # for i in range(1, 100):
+    # # optimized_path = './output/default_optimization/'
+    # optimized_path = './output/multipal_optimization/'
     #
+    # # optimized_files = ['default_experiment.hdf5', ]
+    # optimized_files = os.listdir(optimized_path)
+    #
+    # for optimized_file in optimized_files:
+    #      optimized_file_name, optimized_file_ext = os.path.splitext(optimized_file)
+    #      if optimized_file_ext != '.hdf5':
+    #          continue
+    #
+    #      with h5py.File(optimized_path + optimized_file, "r") as hdf_file:
+    #           W = hdf_file['Weights'][:]
+    #           C = hdf_file['Centers'][:]
+    #           S = hdf_file['Sigmas'][:]
+    #
+    #      output_path =  f'{optimized_path}{optimized_file_name}/research/'
+    #
+    #      try:
+    #         os.makedirs(output_path)
+    #      except:
+    #         pass
+    #      multipal_run(output_path, W, C, S)
+
+
+         # for pop_idx, pop in enumerate(data.columns):
+         #     print(pop)
+         #
+         #     for pop_w in np.arange(0, 1.1, 0.1):
+         #         pop_w = np.around(pop_w, 1)
+         #         output_path = f'{optimized_path}{optimized_file_name}/weights/{pop}/{pop_w}/'
+         #         try:
+         #             os.makedirs(output_path)
+         #         except:
+         #             pass
+         #         Wz = np.copy(W)
+         #         Wz[pop_idx] = pop_w
+         #         multipal_run(output_path, Wz, C, S)
+
+    #     for pop_w in np.arange(0, 1.1, 0.1):
+    #         pop_w = np.around(pop_w, 1)
+    #         output_path = f'{optimized_path}{optimized_file_name}/weights/all/{pop_w}'
+    #         try:
+    #             os.makedirs(output_path)
+    #         except:
+    #             pass
+    #         Wz = np.copy(W)
+    #         Wz[:2] = pop_w
+    #         multipal_run(output_path, Wz, C, S)
+
+
+
+    ##############################################################################
+    ### Experiments for research parametres of spike rate function
+    # for i in range(1, 10):
     #     param = copy(default_param)
-    #     flag = False
-    #     while not flag:
-    #         n = np.ndarray.tolist(randint(lenth))
-    #         if n not in input_params:
-    #             flag = True
-    #     n.insert(0, i)
-    #     # print(n)
-    #     input_params.append(n)
-    #     # print(input_params)
-    #     param['precession_slope'] = precession_slope[n[1]]
-    #     param['animal_velosity'] = animal_velosity[n[2]]
-    #     param['R_place_cell'] = R_place_cell[n[3]]
-    #     param['sigma_place_field'] = sigma_place_field[n[4]]
-    #     param['theta_freq'] = theta_freq[n[5]] # !!!! Исследование тета-частоты не проводилось !!!
+    #     param['precession_slope'] = np.random.uniform(precession_slope[0], precession_slope[-1]) # precession_slope
+    #     param['sigma_place_field'] = np.random.uniform(sigma_place_field[0], sigma_place_field[-1])
+    #
     #     name = f'experiment_{i}'
+    #     param["use_x0"] = False
     #     main(name, param)
 
 
