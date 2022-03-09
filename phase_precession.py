@@ -15,51 +15,6 @@ import os
 from scipy import signal as sig
 from multiprocessing import Pool
 
-@jit(nopython=True)
-def inegrate_g(t, z, tau_rise, tau_decay, mu, kappa, freq):
-    external_input = np.exp(kappa * np.cos(2*np.pi*t*freq*0.001 - mu) )
-    g, dg = z
-    tau_decay2 = tau_decay**2
-    ddg  = (tau_rise*external_input - 2*tau_decay*dg-g)/tau_decay2
-    out = np.empty(2, dtype=np.float64)
-    out[0] = dg
-    out[1] = ddg
-    return out
-
-
-
-# @jit(nopython=True)
-# def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
-#     El = -60
-#     VT = -50
-#     Vreset = -80
-#     gl = 0.1
-#     V = El
-#     C = 1
-#     dt = sim_time[1] - sim_time[0]
-#     spike_rate = np.zeros_like(sim_time)
-#
-#     if issaveV:
-#         Vhist = np.zeros_like(sim_time)
-#
-#     for t_idx, t in enumerate(sim_time):
-#         Isyn = np.sum(g_syn[t_idx, :] * (Erev - V))
-#         V = V + dt * (gl*(El - V) + Isyn) / C
-#         if V > VT:
-#             V = Vreset
-#             spike_rate[t_idx] = 1
-#         if issaveV:
-#             Vhist[t_idx] = V
-#
-#     spike_rate = np.convolve(spike_rate, parzen_window)
-#     spike_rate = spike_rate[parzen_window.size//2:sim_time.size+parzen_window.size//2]
-#     if issaveV:
-#         return spike_rate, Vhist
-#     else:
-#         return spike_rate, np.empty(0)
-
-
-
 def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
     Erev = Erev + 60.0
     soma_idxes = np.array( [0, 2, 3, 7, 8 ] ).astype(np.int16)
@@ -161,24 +116,9 @@ def run_model(g_syn, sim_time, Erev, parzen_window, issaveV):
 
 
 
-@jit(nopython=True)
-def get_teor_spike_rate(t, slope, theta_freq, kappa, sigma=0.15, center=5):
-    # t = 0.001 * t # ms to sec
-    teor_spike_rate = np.exp(-0.5 * ((t - center)/sigma)**2 )
-    precession = 0.001 * t * slope
 
-    phi0 = -2 * np.pi * theta_freq * 0.001 * center - np.pi - precession[np.argmax(teor_spike_rate)]
-    teor_spike_rate *= np.exp(kappa * np.cos(2*np.pi*theta_freq*t*0.001 + precession + phi0) ) # 0.5 *
-    return teor_spike_rate
 
-@jit(nopython=True)
-def r2kappa(R):
-    if R < 0.53:
-        return 2*R + R**3 + 5*R**5/6
-    elif R >= 0.85:
-        return 1/(3*R - 4*R**2 + R**3)
-    else:
-        return -0.4 + 1.39*R + 0.43/(1 - R)
+
 
 
 #@jit(nopython=True)
