@@ -152,17 +152,17 @@ def optimization_model(num, param, data, output_path):
     print("message ", sol.message)
     print("number of interation ", sol.nit)
 
-    run_model_with_parameters([X, g_syn, Erev, param, sim_time, output_path, num, teor_spike_rate])
+    run_model_with_parameters([X, g_syn, Erev, param, sim_time, output_path, num, teor_spike_rate, soma_idxes, dend_idxes])
 
     return
 
 
 def run_model_with_parameters(args):
-    X, g_syn, Erev, param, sim_time, output_path, filename, teor_spike_rate = args
+    X, g_syn, Erev, param, sim_time, output_path, filename, teor_spike_rate, soma_idxes, dend_idxes = args
     parzen_window = parzen(15)
     place_field_center = sim_time[sim_time.size//2]
 
-    spike_rate, Vhist = run_model(g_syn, sim_time, Erev, parzen_window, X)
+    spike_rate, Vhist = run_model(g_syn, sim_time, Erev, parzen_window, soma_idxes, dend_idxes, X=X)
     W = X[0::3]
     C = X[1::3]
     S = X[2::3]
