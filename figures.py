@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpy.random import randint
 import pandas as pd
-from phase_precession import get_teor_spike_rate, r2kappa
+from presimulation_lib import get_teor_spike_rate, r2kappa
 import scipy.signal as signal
 
 def fig2(name_file):

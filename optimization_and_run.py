@@ -142,7 +142,7 @@ def optimization_model(num, param, data, output_path):
     timer = time.time()
     print('starting optimization ... ')
     sol = differential_evolution(loss, x0=X, popsize=24, atol=1e-3, recombination=0.7, \
-                                 mutation=0.2, args=loss_args, bounds=bounds, maxiter=3, \
+                                 mutation=0.2, args=loss_args, bounds=bounds, maxiter=100, \
                                  workers=-1, updating='deferred', disp=True, \
                                  strategy='best2bin')
     X = sol.x
@@ -157,8 +157,7 @@ def optimization_model(num, param, data, output_path):
     return
 
 
-def run_model_with_parameters(args):
-    X, g_syn, Erev, param, sim_time, output_path, filename, teor_spike_rate, soma_idxes, dend_idxes = args
+def run_model_with_parameters(X, g_syn, Erev, param, sim_time, output_path, filename, teor_spike_rate, soma_idxes, dend_idxes):
     parzen_window = parzen(15)
     place_field_center = sim_time[sim_time.size//2]
 
@@ -167,7 +166,7 @@ def run_model_with_parameters(args):
     C = X[1::3]
     S = X[2::3]
 
-    with h5py.File(output_path + f'{filename}.hdf5', "w") as hdf_file:
+    with h5py.File(output_path + f'{filename}', "w") as hdf_file:
         hdf_file.create_dataset('V', data=Vhist)
         hdf_file.create_dataset('spike_rate', data=spike_rate)
         hdf_file.create_dataset('teor_spike_rate', data=teor_spike_rate)
@@ -178,27 +177,48 @@ def run_model_with_parameters(args):
             hdf_file.attrs[name] = value
 
 
+def inegrate_g_and_run(args):
+    X, param, data, sim_time, output_path, filename, soma_idxes, dend_idxes, = args
+    theta_freq = param['theta_freq']
+    g_syn, Erev = plib.get_gsyns(data, theta_freq, sim_time)
+    teor_spike_rate = np.empty(0, )
+    run_model_with_parameters(X, g_syn, Erev, param, sim_time, output_path, filename, teor_spike_rate, soma_idxes, dend_idxes)
 
 
-def multipal_run(output_path, X, params_list, data):
+def multipal_run(output_path, params_list, data, source_file):
     # run optimizeed model with different params
     dt = 0.1
-    duration = 10000
+    duration = 5000
     sim_time = np.arange(0, duration, dt)
     sim_time = np.around(sim_time, 2)
+    data.loc["phi"] = np.deg2rad(data.loc["phi"])
+    data.loc["kappa"] = [plib.r2kappa(r) for r in data.loc["R"]]
+
+    soma_idxes, dend_idxes = plib.get_soma_dend_idxes(data)
+
+    with h5py.File(f'{source_file}', "r") as hdf_file:
+        C = hdf_file['Centers'][:]
+        S = hdf_file['Sigmas'][:]
+        W = hdf_file['Weights'][:]
+        animal_velosity = hdf_file.attrs['animal_velosity']
+
+
+    C = C * animal_velosity # recalculate to cm
+    S = S * animal_velosity # recalculate to cm
+    #print(C)
 
     run_model_args = []
-
-
     for param_idx, param in enumerate(params_list):
         filename = str(param_idx)
-        teor_spike_rate = np.empty(0)
-        theta_freq = param['theta_freq']
-        g_syn, Erev = plib.get_gsyns(data, theta_freq, sim_time)
-        run_model_args.append((X, g_syn, Erev, param, sim_time, output_path, filename, teor_spike_rate))
+        X = np.zeros(W.size*3, dtype=np.float64)
+        X[0::3] = W
+        X[1::3] = C / param['animal_velosity'] + sim_time[sim_time.size//2]
+        X[2::3] = S / param['animal_velosity']
+        # X, param, data, sim_time, output_path, filename
+        run_model_args.append((X, param, data, sim_time, output_path, filename, soma_idxes, dend_idxes))
 
     with Pool(processes=4) as p:
-        p.map(run_model_with_parameters, run_model_args)
+         p.map(inegrate_g_and_run, run_model_args)
 
 
 
