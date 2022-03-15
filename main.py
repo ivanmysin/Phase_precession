@@ -44,8 +44,8 @@ def estimate_weights_significance(sourse_param, output_path, source_file, theta_
                 os.mkdir(output_path_pop_w_research)
             except FileExistsError:
                 pass
-            source_file = output_path_pop_w + file_name
-            research_optim_results(sourse_param, output_path_pop_w_research, source_file, theta_freqs, animal_velosities)
+            source_path_file_wpop = output_path_pop_w + file_name
+            research_optim_results(sourse_param, output_path_pop_w_research, source_path_file_wpop, theta_freqs, animal_velosities)
 
 
     return
