@@ -1,10 +1,9 @@
-import h5py
-import matplotlib
-matplotlib.use('qt5agg')
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from phase_precession_v5 import get_teor_spike_rate, r2kappa
+import h5py
+import matplotlib.pyplot as plt
+
+from presimulation_lib import get_teor_spike_rate, r2kappa
 import scipy.signal as signal
 from scipy.signal import hilbert, filtfilt
 from scipy.optimize import minimize_scalar
@@ -448,7 +447,7 @@ def fig4A(ax, directory, files, param, plot_param):
     return ax    
 
 def fig2_for_exp_4():
-    directory = './output/very_nice/'
+    directory = './output/very_nice/' # './output/tests/' #
 
     files = os.listdir(directory)
     files = [file for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5']
