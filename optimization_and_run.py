@@ -127,7 +127,7 @@ def optimization_model(num, param, data, output_path):
         elif bnd_idx % 3 == 1:
             bounds.append([0, duration])
         elif bnd_idx % 3 == 2:
-            bounds.append([100, 15000])
+            bounds.append([100, 400]) # 15000
 
     # Изменяем границы для параметров для СА3
     bounds[0][0] = 0.01  # вес не менее
@@ -217,7 +217,7 @@ def multipal_run(output_path, params_list, data, source_file):
         # X, param, data, sim_time, output_path, filename
         run_model_args.append((X, param, data, sim_time, output_path, filename, soma_idxes, dend_idxes))
 
-    with Pool(processes=4) as p:
+    with Pool(processes=8) as p:
          p.map(inegrate_g_and_run, run_model_args)
 
 

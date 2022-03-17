@@ -6,6 +6,8 @@ from copy import deepcopy
 import os
 import shutil
 import h5py
+
+
 #############################################################################################
 def research_optim_results(sourse_param, output_path, source_file, theta_freqs, animal_velosities):
     params_list = []
@@ -51,6 +53,10 @@ def estimate_weights_significance(sourse_param, output_path, source_file, theta_
     return
 
 ##########################################################################################
+theta_freqs = [4, 6, 8, 10, 12]
+animal_velosities = [10, 15, 20, 25, 30]
+precession_slope = [2.5, 7]
+sigma_place_field = [2, 5]
 
 output_path = "./output/default_optimization/"
 num = 'default_experiment.hdf5'
@@ -61,14 +67,29 @@ data = pd.read_csv(datafile, header=0, comment="#", index_col=0)
 default_param = default_param4optimization()
 # optlib.optimization_model(num, default_param, data, output_path)
 
+output_path4multipal_optimization = './output/small_sigma_multipal_optimization/'
+# multipal run of optimizarion
+for idx in range(0, 20):
+    filename = str(idx) + '.hdf5'
+    param = deepcopy(default_param)
+    param["use_x0"] = False
+
+    param['animal_velosity'] = np.random.uniform(animal_velosities[0], animal_velosities[1])
+    param['theta_freq'] = np.random.uniform(theta_freqs[0], theta_freqs[1])
+    param['precession_slope'] = np.random.uniform(precession_slope[0], precession_slope[1])
+    param['sigma_place_field'] = np.random.uniform(sigma_place_field[0], sigma_place_field[1])
+
+    #print(param)
+
+    optlib.optimization_model(filename, param, data, output_path4multipal_optimization)
+
+
+
 # research optimized model
-source_file = output_path + num
-# output_path_research = output_path + 'research/'
-
-theta_freqs = [4, 6, 8, 10, 12]
-animal_velosities = [10, 15, 20, 25, 30]
-
-# research_optim_results(default_param, output_path_research, source_file, theta_freqs, animal_velosities)
-
-output_path_weights = output_path + 'weights/'
-estimate_weights_significance(default_param, output_path_weights, source_file, theta_freqs, animal_velosities, data)
+# source_file = output_path + num
+# # output_path_research = output_path + 'research/'
+#
+# # research_optim_results(default_param, output_path_research, source_file, theta_freqs, animal_velosities)
+#
+# output_path_weights = output_path + 'weights/'
+# estimate_weights_significance(default_param, output_path_weights, source_file, theta_freqs, animal_velosities, data)
