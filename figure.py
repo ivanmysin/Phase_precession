@@ -495,6 +495,7 @@ def new_fig3():
     name = ['Weigths', 'Centers, cm', 'Sigmas, cm']
     voc = [w, c, s]
     title = ['A', 'B', 'C']
+    inputs = ['ca3', 'ec3', 'cck', 'pv', 'ngf', 'ivy', 'olm', 'aac', 'bis']
     for i in range(3):
         ax = fig.add_subplot(3, 1, i + 1)
         # for j in range(9):
