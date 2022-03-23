@@ -1,3 +1,5 @@
+from msilib.schema import Directory
+from turtle import color
 import h5py
 import matplotlib
 matplotlib.use('qt5agg')
@@ -12,18 +14,31 @@ import os
 import shutil
 from processing import get_data, get_slr, make_folders
 from scipy.optimize import minimize
+from presimulation_lib import get_teor_spike_rate, r2kappa
 
 neuron_colors = {
-        "ca3" : (1.0, 0.0, 0.0), # red
-        "pv": (0.0, 0.0, 1.0), # blue
-        "olm": (0.0, 0.0, 0.5), #
-        "cck": (0.0, 1.0, 0.0), # green
-        "ivy": (0.0, 0.5, 0.5), #
-        "ngf": (0.5, 0.5, 0.5), #
-        "bis": (0.1, 0.0, 0.5), #
-        "aac": (1.0, 0.0, 0.5), #
-        "ec3": (0.0, 1.0, 0.5), #
-    }
+    "ca3" : (1.0, 0.0, 0.0), # red
+    "ec3": (0.0, 1.0, 0.5), # 6
+    "cck": (0.0, 1.0, 0.0), # green
+    "pv": (0.0, 0.0, 1.0), # blue
+    "ngf": (0.5, 0.5, 0.5), # 3
+    "ivy": (0.0, 0.5, 0.5), # 2
+    "olm": (0.0, 0.0, 0.5), # 1
+    "aac": (1.0, 0.0, 0.5), # 5
+    "bis": (0.1, 0.0, 0.5), # 4
+}
+
+neuron_colors_voc = [
+    (1.0, 0.0, 0.0), # red
+    (0.0, 1.0, 0.5), # 6
+    (0.0, 1.0, 0.0), # green
+    (0.0, 0.0, 1.0), # blue
+    (0.5, 0.5, 0.5), # 3
+    (0.0, 0.5, 0.5), # 2
+    (0.0, 0.0, 0.5), # 1
+    (1.0, 0.0, 0.5), # 5
+    (0.1, 0.0, 0.5), # 4
+]
 
 def fig2(name_file, param_local):
     '''
@@ -46,7 +61,7 @@ def fig2(name_file, param_local):
     ax5 = fig.add_subplot(5,2,6)
     fig2A(ax1, name_file, duration, dt)
     fig2B(ax3, name_file, duration, dt)
-    fig2C(ax2, name_file, duration, dt, {'all_folder': param_local['all_folder']})
+    fig2C(ax2, name_file, {'all_folder': param_local['all_folder'], 'title': None, 'color': None}, duration, dt)
     param = {'mode': 'inhibitory', 'num': 0}
     fig2D(ax5, name_file, duration, dt, param)
     param['mode'] = 'excitatory'
@@ -92,14 +107,26 @@ def fig2A(ax, name_file, duration, dt):
 
     return ax
 
-def fig2B(ax, name_file, duration, dt):
+def fig2B(ax, name_file, duration=3000, dt=0.1):
 
 
     with h5py.File(f'{name_file}', 'r') as hdf_file:
         spike_rate = hdf_file['spike_rate'][:]
+
+        if len(set(spike_rate)) == 2:
+            parzen_window = parzen(1001)
+            spike_rate = np.convolve(spike_rate, parzen_window, mode='same')
+
         theta_freq = hdf_file.attrs['theta_freq']
         teor_spike_rate = hdf_file['teor_spike_rate'][:]
         V = hdf_file['V'][:]
+
+        if len(teor_spike_rate) == 0:
+            sim_time = np.linspace(-0.5 * duration, 0.5 * duration, V.size)
+            sl = hdf_file.attrs['precession_slope']
+            R = hdf_file.attrs['R_place_cell']
+            teor_spike_rate = get_teor_spike_rate(sim_time, sl, theta_freq, r2kappa(R))
+
     sim_time = np.linspace(-0.5 * duration, 0.5 * duration, V.size)
     
     # precession_slope = animal_velosity * np.deg2rad(precession_slope)
@@ -127,15 +154,18 @@ def fig2B(ax, name_file, duration, dt):
     return ax
 
 
-def fig2C(ax, name_file, duration, dt, local_param):
+def fig2C(ax, name_file, local_param, duration=3000, dt=0.1, flag=True):
     animal_position = []
     phases_firing = []
     
+    # print(local_param['all_folder'])
+
     if local_param['all_folder'] == 'None':
         files = [name_file]
     else:
         files = os.listdir(local_param['all_folder'])
         files = [f'{local_param["all_folder"]}/{file}' for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5']
+        # if 'ec3' in local_param['all_folder']: print(files)
     # print(files)
     for file in files:
         with h5py.File(f'{file}', 'r') as hdf_file:
@@ -152,33 +182,50 @@ def fig2C(ax, name_file, duration, dt, local_param):
         phases_firing_ = 2*np.pi*theta_freq*firing*0.001
         animal_position.extend(animal_position_)
         phases_firing.extend(phases_firing_)
+    
+    # if 'ngf' in local_param['all_folder']: print(animal_position)
 
     # print(phases_firing, animal_position)
+
+    if len(phases_firing) < 5: print(len(phases_firing))    
+    if len(phases_firing) < 2: return ax, (0, 0, 0)
 
     phases_firing, animal_position = np.array(phases_firing), np.array(animal_position)
     sl, r, phi_0 = get_slr(phases_firing, animal_position)
 
     phases_firing = np.rad2deg(phases_firing%(2*np.pi))
     p_1, _ = np.polyfit(animal_position, phases_firing, deg=1, cov=True)
-    print(np.rad2deg(phi_0))
+    # print(np.rad2deg(phi_0))
 
     p = np.poly1d([-np.rad2deg(sl), np.rad2deg(phi_0)+180])
-    print(p_1[1])
+    # print(p_1[1])
     # p = np.poly1d([-np.rad2deg(sl), p_1[1]])
 
     # solution = minimize(ob, 180, method='SLSQP')
-    
 
-    ax.scatter(animal_position, phases_firing, s=5, label=f'slope = {np.rad2deg(sl):0.1f}'+'$^{\circ}/cm$;'+f' r = {r:0.5f}')
-    # ax.set_label('Label via method')
-    ax.plot(animal_position[phases_firing < 200], list(p(animal_position[phases_firing < 200])))
-    ax.set_title('C', loc='left')
-    position_start = -0.5*duration*0.001*animal_velosity
-    ax.set(xlabel='animal position, cm', ylabel='$\Delta \\varphi, ^{\circ}$', xlim=[position_start, -position_start], ylim=[0, 360])
-    ax.legend(loc='upper right')
-    ax.grid()
+    # if 'ngf' in local_param['all_folder']: print(sl, r)
 
-    return ax
+    if flag:
+        if local_param['color'] != None:
+            # if 'ngf' in local_param['all_folder']: print(sl, r, local_param['title'])
+            ax.scatter(animal_position, phases_firing, s=5, label=f'slope = {np.rad2deg(sl):0.1f}'+'$^{\circ}/cm$;'+f' \n corr = {r:0.5f}', color=local_param['color'])
+            # ax.set_label('Label via method')
+            ax.plot(animal_position[phases_firing < 200], list(p(animal_position[phases_firing < 200])), color=local_param['color'])
+        else:
+            ax.scatter(animal_position, phases_firing, s=5, label=f'slope = {np.rad2deg(sl):0.1f}'+'$^{\circ}/cm$;'+f' \n corr = {r:0.5f}')
+            # ax.set_label('Label via method')
+            ax.plot(animal_position[phases_firing < 200], list(p(animal_position[phases_firing < 200])))
+        
+        if local_param['title'] == None:
+            ax.set_title('C', loc='left')
+        else:
+            ax.set_title(local_param['title'])
+        position_start = -0.5*duration*0.001*animal_velosity
+        ax.set(xlabel='animal position, cm', ylabel='$\Delta \\varphi, ^{\circ}$', xlim=[-15, 15], ylim=[0, 360])
+        ax.legend(loc='upper right')
+        ax.grid()
+
+    return ax, (sl, r, phi_0)
 
 def fig2D(ax, name_file, duration, dt, param):
 
@@ -196,7 +243,9 @@ def fig2D(ax, name_file, duration, dt, param):
     with h5py.File('./output/conductances.hdf5', "r") as hdf_file:
         for inp_idx, input_name in enumerate(data.columns):
             if input_name != 'bis':
+                # if input_name == 'ngf': print(hdf_file[input_name][:])
                 g_syn[:, inp_idx] = hdf_file[input_name][:]
+
 
     g_syn_wcs = np.copy(g_syn)
 
@@ -226,6 +275,7 @@ def fig2D(ax, name_file, duration, dt, param):
         # print(neuron_colors[label])
         # ax.tick_params(color=neuron_colors[label])
         color = neuron_colors[label]
+    # if label == 'ngf': print(g)
     ax.plot(sim_time, g, label=label, color=color)
     # if label == 'cck':
     #     ax.plot(sim_time, g_syn_wcs[:, 3], label='PV')
@@ -402,22 +452,202 @@ def fig4A(ax, directory, files, param, plot_param):
 
     return ax  
 
-def fig2_for_exp_4():
+def fig2_for_exp_4(directory='./output/multipal_optimization', name=''):
     '''
     directory = multipal_optimization
     creates fig2 for all experiments 4 data
     '''
-    directory = './output/multipal_optimization'
+    # directory = './output/multipal_optimization'
 
     files = os.listdir(directory)
     files = [file for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5']
+    # print(files)
     i = 0
-    param = {'num': i}
-    files = files[:1]
+    param = {'num': f'{name}_{i}', 'flag': False, 'all_folder': 'None'}
+    # files = files[:1]
     for file in files:
-        param['num'] = i
+        print(file)
+        param['num'] = f'{name}_{file[:-4]}'
         fig2(f'{directory}/{file}', param)
         i += 1
+
+def new_fig3():
+    directory = 'output/output/multipal_optimization'
+    files = os.listdir(directory)
+    files = [file for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5']
+    w = np.empty((0,9))
+    s = np.empty((0,9))
+    c = np.empty((0,9))
+    for file in files:
+        with h5py.File(f'{directory}/{file}', 'r') as hdf_file:
+            # print(hdf_file['Weights'][:], w)
+            v = hdf_file.attrs['animal_velosity']
+            w = np.append(w, [hdf_file['Weights'][:]], axis=0)
+            c = np.append(c, [hdf_file['Centers'][:]/1000*v], axis=0)
+            s = np.append(s, [hdf_file['Sigmas'][:]/1000*v], axis=0)
+            # np.append(hdf_file['Sigmas'][:], s, axis=0)
+            # np.append(hdf_file['Centers'][:], c, axis=0)
+            # print(w)
+
+    # print(w)
+
+    fig = plt.figure(figsize=(19,9))
+    name = ['Weigths', 'Centers, cm', 'Sigmas, cm']
+    voc = [w, c, s]
+    title = ['A', 'B', 'C']
+    for i in range(3):
+        ax = fig.add_subplot(3, 1, i + 1)
+        # for j in range(9):
+        #     ax = fig.add_subplot(3, 9, i*9 + j + 1)
+        #     print(voc[i][:, j].shape)
+        #     ax.boxplot(voc[i][:, j])
+            # , labels=f'{name[i]} - {inputs[j]}')
+        ax.set_title(title[i], loc='left')
+        bp = ax.boxplot(voc[i], labels=inputs, patch_artist=True)
+        for patch, color in zip(bp['boxes'], neuron_colors_voc):
+            patch.set_facecolor(color)
+
+        ax.yaxis.grid(True)
+        if i == 2: ax.set_xlabel('Inputs')
+        ax.set_ylabel(name[i])
+
+
+    plt.subplots_adjust(wspace=0.45, hspace=0.5)
+    plt.tight_layout()
+
+    if True:
+        plt.show()
+    if not os.path.exists('output/fig3_new'):
+        os.makedirs('output/fig3_new')
+
+    plt.savefig(f'output/fig3_new/fig3.png') 
+
+
+def new_fig4A():
+    directory = 'output/output/default_optimization/weights'
+    # folders = os.listdir(directory)
+    # files = [file for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5']
+
+    # print(folders)
+
+    # fig2_for_exp_4(directory=f'{directory}/ec3/0.0/research', name='ec3')
+    # name_file = f'{directory}/ec3/0.0/research/0.hdf5'
+    # param_local = {'num': 0, 'flag': True, 'all_folder': f'{directory}/ngf/0.0/research'}
+    # param_local['flag'] = True
+    # fig2(name_file, param_local)
+    # exit()
+
+    fig = plt.figure(figsize=(19,9))
+    inputs = ['ca3', 'ec3', 'cck', 'pv', 'ngf', 'ivy', 'olm', 'aac', 'bis']
+    for i, folder in enumerate(inputs):
+        s = f'{directory}/{folder}/0.0/research'
+        files = os.listdir(s)
+        file = [file for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5'][0]
+        ax = fig.add_subplot(3, 3, i+1)
+
+        # if folder == 'ngf': print(file)
+
+        fig2C(ax, f'{s}/{file}', {'all_folder': s, 'title': inputs[i], 'color': neuron_colors_voc[i]})
+
+        # ax.set_title(inputs[i])
+
+    fig.suptitle('A', x=0.05)
+    plt.subplots_adjust(wspace=0.45, hspace=0.5)
+    plt.tight_layout()
+    
+    if True:
+        plt.show()
+    if not os.path.exists('output/fig4_new'):
+        os.makedirs('output/fig4_new')
+
+    plt.savefig(f'output/fig3_new/fig4A.png') 
+
+
+def new_fig4B():
+    directory = 'output/output/default_optimization/weights'
+
+    fig = plt.figure(figsize=(19,9))
+    inputs = ['ca3', 'ec3', 'cck', 'pv', 'ngf', 'ivy', 'olm', 'aac', 'bis']
+    for i, folder in enumerate(inputs):
+        w = []
+        r = []
+
+        folds = os.listdir(f'{directory}/{folder}')
+        ax = fig.add_subplot(3, 3, i+1)
+        for fold in folds:
+            s = f'{directory}/{folder}/{fold}/research'
+            files = os.listdir(s)
+            file = [file for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5'][0]
+            w.append(float(fold))
+            # r.append(fig2C(ax, f'{s}/{file}', {'all_folder': s, 'title': inputs[i], 'color': neuron_colors_voc[i]}, dt=1000))
+            print(f'{s}/{file}')
+            _, tmp = fig2C(ax, f'{s}/{file}', {'all_folder': s, 'title': inputs[i], 'color': neuron_colors_voc[i]}, flag=False)
+            r.append(tmp[1])
+
+
+        # s = f'{directory}/{folder}/0.0/research'
+        # files = os.listdir(s)
+        # file = [file for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5']
+        # ax = fig.add_subplot(3, 3, i+1)
+
+        # fig2C(ax, f'{s}/{file}', {'all_folder': s, 'title': inputs[i], 'color': neuron_colors_voc[i]})
+
+        ax.set_title(inputs[i])
+        ax.set(xlabel='w', ylabel='corr')
+        ax.scatter(w, r, color=neuron_colors[folder])
+
+    fig.suptitle('B', x=0.05)
+    plt.subplots_adjust(wspace=0.45, hspace=0.5)
+    plt.tight_layout()
+    
+    if True:
+        plt.show()
+    if not os.path.exists('output/fig4_new'):
+        os.makedirs('output/fig4_new')
+
+    plt.savefig(f'output/fig3_new/fig4B.png') 
+    
+
+def new_fig5():
+    directory = 'output/output/small_sigma_multipal_optimization'
+    files = os.listdir(directory)
+    files = [file for file in files if (file[-4:] == 'hdf5') and file != 'conductances.hdf5']
+    w = np.empty((0,9))
+    c = np.empty((0,9))
+    for file in files:
+        with h5py.File(f'{directory}/{file}', 'r') as hdf_file:
+            v = hdf_file.attrs['animal_velosity']
+            w = np.append(w, [hdf_file['Weights'][:]], axis=0)
+            c = np.append(c, [hdf_file['Centers'][:]/1000*v], axis=0)
+
+    fig = plt.figure(figsize=(19,9))
+    inputs = ['ca3', 'ec3', 'cck', 'pv', 'ngf', 'ivy', 'olm', 'aac', 'bis']
+    for i, name in enumerate(inputs):
+        ax = fig.add_subplot(3, 3, i + 1)
+        ax.scatter(c[:, i], w[:, i], color=neuron_colors[name])
+        ax.set_title(name)
+        if i > 5:
+            ax.set_xlabel('Centers, cm')
+        if i%3 == 0:
+            ax.set_ylabel('Weigths')
+        ax.set(xlim=[-25,25], ylim=[0,1])
+        
+
+
+
+    fig.suptitle('B', x=0.05)
+    plt.subplots_adjust(wspace=0.45, hspace=0.5)
+    plt.tight_layout()
+
+    if True:
+        plt.show()
+    if not os.path.exists('output/fig5_new'):
+        os.makedirs('output/fig5_new')
+
+    plt.savefig(f'output/fig5_new/fig5.png') 
+
+
+
     
 def main():
     ################
@@ -462,8 +692,8 @@ def main():
     # create a folder 'output/fig4' if it doesn't exist
     # path = output/multipal_optimization
     # 
-    directory = 'output/multipal_optimization'
-    fig4(directory)
+    # directory = 'output/multipal_optimization'
+    # fig4(directory)
 
     ################
     # create fig2 for all experement 4
@@ -473,6 +703,17 @@ def main():
     # 
     # fig2_for_exp_4()
 
+    ################
+    # new_fig3()
+
+    ################
+    # new_fig4A()
+
+    ################
+    # new_fig4B()
+
+    ################
+    new_fig5()
 
 if __name__ == '__main__':
     main()
