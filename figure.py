@@ -17,27 +17,28 @@ from scipy.optimize import minimize
 from presimulation_lib import get_teor_spike_rate, r2kappa
 
 neuron_colors = {
-    "ca3" : (1.0, 0.0, 0.0), # red
-    "ec3": (0.0, 1.0, 0.5), # 6
-    "cck": (0.0, 1.0, 0.0), # green
-    "pv": (0.0, 0.0, 1.0), # blue
-    "ngf": (0.5, 0.5, 0.5), # 3
-    "ivy": (0.0, 0.5, 0.5), # 2
-    "olm": (0.0, 0.0, 0.5), # 1
-    "aac": (1.0, 0.0, 0.5), # 5
-    "bis": (0.1, 0.0, 0.5), # 4
+    "pyr" : '#ff4500', #orangered
+    "pv": '#00008b', # darkblue
+    "olm": '#6495ed', # cornflower   
+    "cck": '#00ff00', # lime
+    "ivy": '#006400', # darkgreen
+    "ngf": '#ffd700', # gold
+    "bis": '#00ffff', # aqua
+    "aac": '#ffdab9', # peachpuff
+    "ca3": '#ff00ff', # fuchsia
+    "ec3": '#b03060', #maroon3
 }
 
 neuron_colors_voc = [
-    (1.0, 0.0, 0.0), # red
-    (0.0, 1.0, 0.5), # 6
-    (0.0, 1.0, 0.0), # green
-    (0.0, 0.0, 1.0), # blue
-    (0.5, 0.5, 0.5), # 3
-    (0.0, 0.5, 0.5), # 2
-    (0.0, 0.0, 0.5), # 1
-    (1.0, 0.0, 0.5), # 5
-    (0.1, 0.0, 0.5), # 4
+    '#ff00ff', # fuchsia ca3
+    '#b03060', #maroon3 ec3
+    '#00ff00', # lime cck
+    '#00008b', # darkblue pv
+    '#ffd700', # gold ngf
+    '#006400', # darkgreen ivy
+    '#6495ed', # cornflower olm
+    '#ffdab9', # peachpuff aac
+    '#00ffff', # aqua bis
 ]
 
 def fig2(name_file, param_local):
