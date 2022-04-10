@@ -609,7 +609,7 @@ def new_fig4B():
     if not os.path.exists('output/fig4_new'):
         os.makedirs('output/fig4_new')
 
-    plt.savefig(f'output/fig3_new/fig4B.png') 
+    plt.savefig(f'output/fig4_new/fig4B.png') 
     
 
 def new_fig5():
