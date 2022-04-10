@@ -1,5 +1,3 @@
-from msilib.schema import Directory
-from turtle import color
 import h5py
 import matplotlib
 matplotlib.use('qt5agg')
@@ -180,7 +178,7 @@ def fig2C(ax, name_file, local_param, duration=3000, dt=0.1, flag=True):
 
         firing = sim_time[firing_idxs]
         animal_position_ = firing*animal_velosity*0.001
-        phases_firing_ = 2*np.pi*theta_freq*firing*0.001
+        phases_firing_ = 2*np.pi*theta_freq*firing*0.001 % (2*np.pi)
         animal_position.extend(animal_position_)
         phases_firing.extend(phases_firing_)
     
@@ -595,7 +593,11 @@ def new_fig4B():
         # fig2C(ax, f'{s}/{file}', {'all_folder': s, 'title': inputs[i], 'color': neuron_colors_voc[i]})
 
         ax.set_title(inputs[i])
-        ax.set(xlabel='w', ylabel='corr')
+
+        if i > 5:
+            ax.set_xlabel('Weigths')
+        if i%3 == 0:
+            ax.set_ylabel('Corr')
         ax.scatter(w, r, color=neuron_colors[folder])
 
     fig.suptitle('B', x=0.05)
@@ -709,13 +711,13 @@ def main():
     # new_fig3()
 
     ################
-    # new_fig4A()
+    new_fig4A()
 
     ################
     # new_fig4B()
 
     ################
-    new_fig5()
+    # new_fig5()
 
 if __name__ == '__main__':
     main()

@@ -60,7 +60,7 @@ def make_for_slr(V, f, vel, duration, dt):
 
     firing = sim_time[firing_idxs]
     animal_position_ = firing*vel*0.001
-    phases_firing_ = 2*np.pi*f*firing*0.001
+    phases_firing_ = 2*np.pi*f*firing*0.001 % (2*np.pi)
     return get_slr(phases_firing_, animal_position_)
 
 def get_data(directory, duration, dt, param):
@@ -116,8 +116,8 @@ def make_folders(directory):
 
 # def ob(b, ph, x):
     # f1 = lambda x: s
-#     s = np.array(list(map(f1, f)))
-#     return np.sum((s-t)**2)
+    # s = np.array(list(map(f1, f)))
+    # return np.sum((s-t)**2)
 
 if __name__ == '__main__':
     pass
