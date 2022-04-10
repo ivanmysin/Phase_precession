@@ -1,6 +1,6 @@
 import h5py
 import matplotlib
-matplotlib.use('qt5agg')
+#matplotlib.use('qt5agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -60,7 +60,7 @@ def fig2(name_file, param_local):
     ax5 = fig.add_subplot(5,2,6)
     fig2A(ax1, name_file, duration, dt)
     fig2B(ax3, name_file, duration, dt)
-    fig2C(ax2, name_file, {'all_folder': param_local['all_folder'], 'title': None, 'color': None}, duration, dt)
+    fig2C(ax2, name_file, {'all_folder': param_local['all_folder'], 'title': None, 'color': None, 'i': None}, duration, dt)
     param = {'mode': 'inhibitory', 'num': 0}
     fig2D(ax5, name_file, duration, dt, param)
     param['mode'] = 'excitatory'
@@ -220,7 +220,13 @@ def fig2C(ax, name_file, local_param, duration=3000, dt=0.1, flag=True):
         else:
             ax.set_title(local_param['title'])
         position_start = -0.5*duration*0.001*animal_velosity
-        ax.set(xlabel='animal position, cm', ylabel='$\Delta \\varphi, ^{\circ}$', xlim=[-15, 15], ylim=[0, 360])
+
+        if local_param['i'] != None:
+            if local_param['i'] > 5:
+                ax.set_xlabel('animal position, cm')
+            if local_param['i']%3 == 0:
+                ax.set_ylabel('$\Delta \\varphi, ^{\circ}$')
+        ax.set(xlim=[-15, 15], ylim=[0, 360])
         ax.legend(loc='upper right')
         ax.grid()
 
@@ -547,7 +553,7 @@ def new_fig4A():
 
         # if folder == 'ngf': print(file)
 
-        fig2C(ax, f'{s}/{file}', {'all_folder': s, 'title': inputs[i], 'color': neuron_colors_voc[i]})
+        fig2C(ax, f'{s}/{file}', {'all_folder': s, 'title': inputs[i], 'color': neuron_colors_voc[i], 'i': i})
 
         # ax.set_title(inputs[i])
 
@@ -560,7 +566,7 @@ def new_fig4A():
     if not os.path.exists('output/fig4_new'):
         os.makedirs('output/fig4_new')
 
-    plt.savefig(f'output/fig3_new/fig4A.png') 
+    plt.savefig(f'output/fig4_new/fig4A.png') 
 
 
 def new_fig4B():
@@ -581,7 +587,7 @@ def new_fig4B():
             w.append(float(fold))
             # r.append(fig2C(ax, f'{s}/{file}', {'all_folder': s, 'title': inputs[i], 'color': neuron_colors_voc[i]}, dt=1000))
             print(f'{s}/{file}')
-            _, tmp = fig2C(ax, f'{s}/{file}', {'all_folder': s, 'title': inputs[i], 'color': neuron_colors_voc[i]}, flag=False)
+            _, tmp = fig2C(ax, f'{s}/{file}', {'all_folder': s, 'title': inputs[i], 'color': neuron_colors_voc[i], 'i': i}, flag=False)
             r.append(tmp[1])
 
 
