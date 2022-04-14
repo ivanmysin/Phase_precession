@@ -38,14 +38,16 @@ def run_model(g_syn, sim_time, Erev, parzen_window, soma_idxes, dend_idxes, X = 
     # print("################################################")
 
 
-    dt = sim_time[1] - sim_time[0]
-    duration = sim_time[-1]
+    dt = 0.1
+    duration = dt * (sim_time.size + 1)
 
     pyramidal = lib.ComplexNeuron(neuron["compartments"], neuron["connections"])
     pyramidal.integrate(dt, duration)
 
 
-    Vsoma = pyramidal.getCompartmentByName('soma').getVhist()
+    Vsoma = np.copy( pyramidal.getCompartmentByName('soma').getVhist() )
+    Vsoma = Vsoma[:sim_time.size]
+    
     # Vdend = pyramidal.getCompartmentByName('dendrite').getVhist()
     spike_rate = np.zeros_like(Vsoma)
 
@@ -55,6 +57,8 @@ def run_model(g_syn, sim_time, Erev, parzen_window, soma_idxes, dend_idxes, X = 
     spike_rate = np.convolve(spike_rate, parzen_window, mode='same')
 
     Vsoma = Vsoma - 60
+    
+
 
     return spike_rate, Vsoma
 
@@ -68,31 +72,35 @@ def loss(X, teor_spike_rate, g_syn, sim_time, Erev, parzen_window, soma_idxes, d
 ##################################################################
 def optimization_model(num, param, data, output_path):
     ### Parameters for simulation
-    duration = 3000  # ms
-    dt = 0.1  # ms
 
     theta_freq = param['theta_freq']  # 8 Hz
     precession_slope = param['precession_slope']  # deg/cm
     animal_velosity = param['animal_velosity']  # cm/sec
     R_place_cell = param['R_place_cell']  # ray length
-    place_field_center = 0.5 * duration  # center of similation
     sigma_place_field = param['sigma_place_field']  # cm
-    ca3_center = place_field_center + 200  #
-    ec3_center = place_field_center - 200  #
+
+    
 
 
-    data.loc["phi"] = np.deg2rad(data.loc["phi"])
-    data.loc["kappa"] = [plib.r2kappa(r) for r in data.loc["R"]]
+
+    # data.loc["phi"] = np.deg2rad(data.loc["phi"])
+    # data.loc["kappa"] = [plib.r2kappa(r) for r in data.loc["R"]]
 
     soma_idxes, dend_idxes = plib.get_soma_dend_idxes(data)
     ###################################################################
     ### Делаем предвычисления
-    sim_time = np.arange(0, duration, dt)
-    sim_time = np.around(sim_time, 2)
     precession_slope = animal_velosity * np.deg2rad(precession_slope)
     kappa_place_cell = plib.r2kappa(R_place_cell)
     sigma_place_field = 1000 * sigma_place_field / animal_velosity  # recalculate to ms
-
+    
+    
+    duration = 12 * sigma_place_field   # 3000  # ms
+    dt = 0.1  # ms
+    place_field_center = 0.5 * duration  # center of similation
+    ca3_center = place_field_center + 200  #
+    ec3_center = place_field_center - 200  #
+    sim_time = np.around( np.arange(0, duration, dt), 3)
+    
     teor_spike_rate = plib.get_teor_spike_rate(sim_time, precession_slope, theta_freq, kappa_place_cell,
                                           sigma=sigma_place_field, center=place_field_center)
 
@@ -120,6 +128,8 @@ def optimization_model(num, param, data, output_path):
     else:
         X = None
 
+        
+    sigma_max = 4000 / animal_velosity  #15000
     bounds = []
     for bnd_idx in range(n_pops * 3):
         if bnd_idx % 3 == 0:
@@ -127,7 +137,7 @@ def optimization_model(num, param, data, output_path):
         elif bnd_idx % 3 == 1:
             bounds.append([0, duration])
         elif bnd_idx % 3 == 2:
-            bounds.append([100, 400]) # 15000
+            bounds.append([100, sigma_max]) # 
 
     # Изменяем границы для параметров для СА3
     bounds[0][0] = 0.01  # вес не менее
@@ -152,7 +162,7 @@ def optimization_model(num, param, data, output_path):
     print("message ", sol.message)
     print("number of interation ", sol.nit)
 
-    run_model_with_parameters([X, g_syn, Erev, param, sim_time, output_path, num, teor_spike_rate, soma_idxes, dend_idxes])
+    run_model_with_parameters(X, g_syn, Erev, param, sim_time, output_path, num, teor_spike_rate, soma_idxes, dend_idxes)
 
     return
 
@@ -166,7 +176,7 @@ def run_model_with_parameters(X, g_syn, Erev, param, sim_time, output_path, file
     C = X[1::3]
     S = X[2::3]
 
-    with h5py.File(output_path + f'{filename}', "w") as hdf_file:
+    with h5py.File(f'{output_path}{filename}.hdf5', "w") as hdf_file:
         hdf_file.create_dataset('V', data=Vhist)
         hdf_file.create_dataset('spike_rate', data=spike_rate)
         hdf_file.create_dataset('teor_spike_rate', data=teor_spike_rate)
@@ -191,8 +201,7 @@ def multipal_run(output_path, params_list, data, source_file):
     duration = 5000
     sim_time = np.arange(0, duration, dt)
     sim_time = np.around(sim_time, 2)
-    data.loc["phi"] = np.deg2rad(data.loc["phi"])
-    data.loc["kappa"] = [plib.r2kappa(r) for r in data.loc["R"]]
+
 
     soma_idxes, dend_idxes = plib.get_soma_dend_idxes(data)
 
@@ -205,7 +214,7 @@ def multipal_run(output_path, params_list, data, source_file):
 
     C = C * animal_velosity # recalculate to cm
     S = S * animal_velosity # recalculate to cm
-    #print(C)
+
 
     run_model_args = []
     for param_idx, param in enumerate(params_list):
