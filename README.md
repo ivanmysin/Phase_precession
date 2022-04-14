@@ -51,9 +51,9 @@ Open terminal in working directory and execute commands:
 
       bash setup.sh
 
-or 
+  or 
 
-    python3 setup.py build_ext --inplace
+      python3 setup.py build_ext --inplace
 
 
 * Run in terminal:
@@ -63,11 +63,6 @@ or
 Simulation results are saved to hdf5 file.
 *python3* is the default command for calling the python 3 interpreter, however, it may be different on your system.
 Substitute the call of the interpreter for which you have installed dependencies.
-
-* To process the results, run *process.py*.  It will process and save
-in the same file, wavelet spectra, bands, distribution of neurons by rhythm phases, etc.
-  
-      python3 process.py
 
 * Run *figure.py* file to plot figure
 
