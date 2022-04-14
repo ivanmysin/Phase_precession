@@ -1,7 +1,7 @@
 
 def default_param4optimization():
     default_param = {'precession_slope': 5, 'animal_velosity': 20, 'R_place_cell': 0.5, 'sigma_place_field': 4,
-                     'theta_freq': 8, "use_x0": True}
+                     'theta_freq': 8, "use_x0": True, 'sigma_max_cm' : 30, }
 
     return default_param
 

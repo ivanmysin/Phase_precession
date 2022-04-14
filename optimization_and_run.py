@@ -129,7 +129,7 @@ def optimization_model(num, param, data, output_path):
         X = None
 
         
-    sigma_max = 4000 / animal_velosity  #15000
+    sigma_max = param["sigma_max_cm"] * 1000 / animal_velosity # recalculate cm to ms
     bounds = []
     for bnd_idx in range(n_pops * 3):
         if bnd_idx % 3 == 0:
@@ -139,13 +139,13 @@ def optimization_model(num, param, data, output_path):
         elif bnd_idx % 3 == 2:
             bounds.append([100, sigma_max]) # 
 
-    # Изменяем границы для параметров для СА3
-    bounds[0][0] = 0.01  # вес не менее
-    bounds[1][0] = place_field_center  # центр входа от СА3 не ранее центра в СА1
+    # Change bounds for СА3 input
+    bounds[0][0] = 0.01  # minimal weigth
+    bounds[1][0] = place_field_center  # center of СА3 input after center of plce field
 
-    # Изменяем границы для параметров для EC3
-    bounds[3][0] = 0.01  # вес не менее
-    bounds[4][1] = place_field_center  # центр входа от EC3 ранее центра в СА1
+    # Change bounds for EC3 input
+    bounds[3][0] = 0.01  # minimal weigth
+    bounds[4][1] = place_field_center  #  center of EC3 input before center of plce field
 
     loss_args = (teor_spike_rate, g_syn, sim_time, Erev, parzen_window, soma_idxes, dend_idxes)
 

@@ -62,7 +62,7 @@ def estimate_weights_significance(sourse_param, output_path, source_file, theta_
     return
 
 ##########################################################################################
-def main():
+def main(small_sigma_flag=False):
     theta_freqs = [4, 6, 8, 10, 12]
     animal_velosities = [10, 15, 20, 25, 30]
     precession_slope = [2.5, 7]
@@ -75,12 +75,19 @@ def main():
     data.loc["kappa"] = [plib.r2kappa(r) for r in data.loc["R"]]
     
     ############################################
+    ############ run all simulations ##########
 
-
-    output_path = "./output/default_optimization/" # "./output/small_sigmas/"  #
-    num = 'default_experiment.hdf5'  # 'experiment_small_sigmas.hdf5'    # 
+    if small_sigma_flag:
+        output_path = "./output/small_sigmas/"
+        num = 'experiment_small_sigmas.hdf5'
+    else:
+        output_path = "./output/default_optimization/"
+        num = 'default_experiment.hdf5'
 
     default_param = default_param4optimization()
+    if small_sigma_flag:
+        default_param['sigma_max_cm'] = 4.0
+
     optlib.optimization_model(num, default_param, data, output_path)
 
     
@@ -100,10 +107,12 @@ def main():
     except FileExistsError:
         pass
     estimate_weights_significance(default_param, output_path_weights, source_file, theta_freqs, animal_velosities, data)
-    
 
-    output_path4multipal_optimization = './output/multipal_optimization/'
-    # './output/small_sigma_multipal_optimization/'
+    if small_sigma_flag:
+        output_path4multipal_optimization = './output/small_sigma_multipal_optimization/'
+    else:
+        output_path4multipal_optimization = './output/multipal_optimization/'
+
     try:
         os.mkdir(output_path4multipal_optimization)
     except FileExistsError:
@@ -111,7 +120,7 @@ def main():
     
     
     # multipal run of optimizarion
-    for idx in range(1, 30):
+    for idx in range(30):
         filename = str(idx)
         param = deepcopy(default_param)
         param["use_x0"] = False
