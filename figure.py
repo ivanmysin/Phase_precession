@@ -5,7 +5,6 @@ matplotlib.use('qt5agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from phase_precession_v5 import get_teor_spike_rate, r2kappa
 
 import scipy.signal as signal
 from scipy.signal import hilbert, filtfilt
